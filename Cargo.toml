@@ -18,6 +18,11 @@ zip = "0.5.13"
 version = "1.9.0"
 features = ["attributes"]
 
+[dependencies.cursive]
+version = "0.16.3"
+default-features = false
+features = ["crossterm-backend"]
+
 [dependencies.sqlx]
 version = "0.5.5"
 features = ["runtime-async-std-rustls", "sqlite", "macros", "migrate", "chrono"]
