@@ -34,3 +34,9 @@ pub async fn get_books(pool: &SqlitePool) -> Result<Vec<Book>, sqlx::Error> {
         .fetch_all(pool)
         .await?)
 }
+
+pub async fn get_book(pool: &SqlitePool, id: i64) -> Result<Book, sqlx::Error> {
+    Ok(query_as!(Book, "select * from books where id = ?", id)
+        .fetch_one(pool)
+        .await?)
+}

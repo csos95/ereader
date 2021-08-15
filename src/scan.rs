@@ -64,7 +64,7 @@ pub async fn scan<P: AsRef<Path>>(pool: &SqlitePool, path: P) -> Result<(), Arch
         });
 
     // get the books in the library
-    let library_books = library::get_books(&pool).await?;
+    let library_books = library::get_books(pool).await?;
     let library_map = library_books
         .into_iter()
         .fold(HashMap::new(), |mut map, book| {
@@ -88,7 +88,7 @@ pub async fn scan<P: AsRef<Path>>(pool: &SqlitePool, path: P) -> Result<(), Arch
 
     // figure out the new and moved books
     for (key, book) in &found_map {
-        match library_map.get(&key) {
+        match library_map.get(key) {
             Some(library_book) => {
                 if book.path != library_book.path {
                     let mut moved_book = library_book.clone();
@@ -104,17 +104,14 @@ pub async fn scan<P: AsRef<Path>>(pool: &SqlitePool, path: P) -> Result<(), Arch
 
     // figure out the lost books
     for (key, book) in &library_map {
-        match found_map.get(&key) {
-            None => {
-                lost_books.push(book.clone());
-            }
-            _ => {}
+        if found_map.get(key).is_none() {
+            lost_books.push(book.clone());
         }
     }
 
     for book in &new_books {
         println!("New Book: {} at {}", book.title, book.path);
-        library::insert_book(&pool, book).await.unwrap();
+        library::insert_book(pool, book).await.unwrap();
     }
 
     for book in &lost_books {
@@ -123,7 +120,7 @@ pub async fn scan<P: AsRef<Path>>(pool: &SqlitePool, path: P) -> Result<(), Arch
 
     for book in &moved_books {
         println!("Moved Book: {} to {}", book.title, book.path);
-        library::update_book_path(&pool, book).await.unwrap();
+        library::update_book_path(pool, book).await.unwrap();
     }
 
     for error in errors {
@@ -188,7 +185,7 @@ fn get_metadata<P: AsRef<Path>>(
     doc: &EpubDoc<Cursor<Vec<u8>>>,
     tag: &str,
 ) -> Result<String, ArchiveError> {
-    doc.mdata(tag).ok_or(ArchiveError::MissingMetadata(
+    doc.mdata(tag).ok_or_else(|| ArchiveError::MissingMetadata(
         path.as_ref().to_string_lossy().to_string(),
         tag.to_string(),
     ))

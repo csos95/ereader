@@ -9,12 +9,12 @@
             for library books not found, display errors
             for found books in library, check that the paths match, if they do not, update the path in the library
 - library
-    - [ ] list books in library
-    - [ ] select book
+    - [x] list books in library
+    - [x] select book
 - reader (should mostly be copy from first project, might change how chapter is gotten)
-    - [ ] get chapter from epub
-    - [ ] parse and style the html
-    - [ ] display in scroll view
+    - [x] get chapter from epub
+    - [x] parse and style the html
+    - [x] display in scroll view
     - [ ] prev/next chapter
     - [ ] bookmark
 - bookmark
