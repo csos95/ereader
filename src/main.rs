@@ -101,28 +101,34 @@ fn chapter(s: &mut Cursive, id: i64, index: usize) -> Result<(), DatabaseError> 
         library::get_book(pool, id).await
     })?;
 
-    let html = epub::get_chapter_html(book.path, index)?;
+    let html = epub::get_chapter_html(&book.path, index)?;
     let styled_text = html_to_styled_string("body", &html[..])?;
 
     let mut dialog = Dialog::around(TextView::new(styled_text).scrollable());
 
-    let index_p = index;
-    let id_p = id;
-    if index > 0 {
-        dialog.add_button("Previous", move |s| {
-            if let Err(e) = chapter(s, id_p, index_p - 1) {
+    let index_n = index;
+    let id_n = id;
+    if true {
+        dialog.add_button("Next", move |s| {
+            if let Err(e) = chapter(s, id_n, index_n + 1) {
                 error(s, e);
             }
         });
     }
 
-    if true {
-        dialog.add_button("Next", move |s| {
-            if let Err(e) = chapter(s, id, index + 1) {
+    if index > 0 {
+        dialog.add_button("Previous", move |s| {
+            if let Err(e) = chapter(s, id, index - 1) {
                 error(s, e);
             }
         });
     }
+
+    dialog.add_button("TOC", move |s| {
+        if let Err(e) = toc(s, &book) {
+            error(s, e);
+        }
+    });
 
     s.pop_layer();
     s.add_layer(dialog);
@@ -130,6 +136,31 @@ fn chapter(s: &mut Cursive, id: i64, index: usize) -> Result<(), DatabaseError> 
     Ok(())
 }
 
+
+fn toc(s: &mut Cursive, book: &library::Book) -> Result<(), DatabaseError> {
+    let toc = epub::toc(&book.path)?;
+
+    let mut view = SelectView::new();
+
+    for (label, content) in toc {
+        view.add_item(label, (book.id, content));
+    }
+
+    view.set_on_submit(|s, (id, content)| {
+        s.pop_layer();
+        if let Err(e) = chapter(s, *id, 0) {
+            error(s, e);
+        }
+    });
+
+    s.add_layer(
+        Dialog::around(view.scrollable())
+            .title("Table of Contents")
+            .button("Close", |s| { s.pop_layer(); })
+    );
+
+    Ok(())
+}
 
 
 

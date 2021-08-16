@@ -5,7 +5,7 @@ use epub::doc::EpubDoc;
 use scraper::{ElementRef, Html, Selector};
 use std::fs::read;
 use std::io::Cursor;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 use wasmer_enumset::EnumSet;
 
@@ -37,6 +37,18 @@ impl From<anyhow::Error> for ArchiveError {
     fn from(e: anyhow::Error) -> Self {
         ArchiveError::AnyhowError(e)
     }
+}
+
+pub fn toc<P: AsRef<Path>>(path: P) -> Result<Vec<(String, PathBuf)>, ArchiveError> {
+    let buff = read(&path)?;
+    let cursor = Cursor::new(buff);
+    let mut doc = EpubDoc::from_reader(cursor).map_err(|_| ArchiveError::UnableToParseEpub)?;
+
+    let toc = doc.toc.iter()
+        .map(|nav| (nav.label.clone(), nav.content.clone()))
+        .collect::<Vec<(String, PathBuf)>>();
+
+    Ok(toc)
 }
 
 pub fn get_chapter_html<P: AsRef<Path>>(path: P, index: usize) -> Result<String, ArchiveError> {
