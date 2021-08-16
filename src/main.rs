@@ -7,10 +7,7 @@ use async_std::task;
 use cursive::traits::Scrollable;
 use cursive::views::{Dialog, SelectView, TextView};
 use cursive::{Cursive, CursiveExt};
-use once_cell::sync::OnceCell;
 use sqlx::SqlitePool;
-use std::sync::Mutex;
-use std::sync::MutexGuard;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -31,6 +28,8 @@ pub enum DatabaseError {
     MigrationError(String),
     #[error("sqlx error {0}")]
     SqlxError(sqlx::Error),
+    #[error("archive error {0}")]
+    ArchiveError(epub::ArchiveError),
 }
 
 impl From<sqlx::Error> for DatabaseError {
@@ -39,58 +38,73 @@ impl From<sqlx::Error> for DatabaseError {
     }
 }
 
-static POOL: OnceCell<Mutex<SqlitePool>> = OnceCell::new();
-
-pub async fn init<S: std::convert::AsRef<str>>(path: S) -> Result<(), DatabaseError> {
-    // connect to the database
-    let pool = SqlitePool::connect(path.as_ref()).await?;
-
-    // set the database connection
-    POOL.set(Mutex::new(pool))
-        .map_err(|_| DatabaseError::UnableToSetConnection)
-}
-
-async fn get_pool() -> Result<MutexGuard<'static, SqlitePool>, DatabaseError> {
-    match POOL.get() {
-        Some(mutex) => mutex
-            .lock()
-            .map_err(|_| DatabaseError::UnableToGetConnection),
-        None => Err(DatabaseError::ConnectionNotSet),
+impl From<epub::ArchiveError> for DatabaseError {
+    fn from(e: epub::ArchiveError) -> Self {
+        DatabaseError::ArchiveError(e)
     }
 }
 
 #[async_std::main]
 async fn main() {
-    init("ereader.sqlite").await.unwrap();
-
-    //scan::scan(&pool, "epub").await.unwrap();
-
-    let books = {
-        let pool = get_pool().await.unwrap();
-        library::get_books(&pool).await.unwrap()
-    };
+    let pool = SqlitePool::connect("ereader.sqlite").await.unwrap();
+    scan::scan(&pool, "epub").await.unwrap();
 
     let mut siv = Cursive::new();
+    siv.set_user_data(pool);
 
-    let mut view = SelectView::new().h_align(cursive::align::HAlign::Left);
+    library(&mut siv).unwrap();
 
-    for book in &books {
-        view.add_item(book.title.clone(), book.id);
-    }
-
-    view.set_on_submit(|s, id| {
-        // s.pop_layer();
-        let book = task::block_on(async {
-            let pool = get_pool().await?;
-            Ok::<library::Book, DatabaseError>(library::get_book(&pool, *id).await?)
-        })
-        .unwrap();
-        let chapter_text = epub::get_chapter_html(book.path, 4).unwrap();
-        let styled_text = html_to_styled_string("body", &chapter_text[..]).unwrap();
-        s.add_layer(Dialog::around(TextView::new(styled_text).scrollable()));
-    });
-
-    siv.add_layer(Dialog::around(view.scrollable()).title("Library"));
     siv.add_global_callback('q', |s| s.quit());
     siv.run();
 }
+
+fn error(s: &mut Cursive, e: DatabaseError) {
+    s.add_layer(Dialog::around(TextView::new(format!("{:?}", e))).title("Error"));
+}
+
+fn library(s: &mut Cursive) -> Result<(), DatabaseError> {
+    let books = task::block_on(async {
+        let pool = s.user_data().unwrap();
+        library::get_books(pool).await
+    })?;
+
+    let mut view = SelectView::new();
+
+    for book in books {
+        view.add_item(book.title, book.id);
+    }
+
+    view.set_on_submit(|s, id| {
+        if let Err(e) = chapter(s, *id, 100) {
+            error(s, e);
+        }
+    });
+
+    s.pop_layer();
+    s.add_layer(Dialog::around(view.scrollable()).title("Library"));
+
+    Ok(())
+}
+
+fn chapter(s: &mut Cursive, id: i64, index: usize) -> Result<(), DatabaseError> {
+    let book = task::block_on(async {
+        let pool = s.user_data().unwrap();
+        library::get_book(pool, id).await
+    })?;
+
+    let html = epub::get_chapter_html(book.path, index)?;
+    let styled_text = html_to_styled_string("body", &html[..])?;
+
+    s.pop_layer();
+    s.add_layer(Dialog::around(TextView::new(styled_text).scrollable()));
+
+    Ok(())
+}
+
+
+
+
+
+
+
+

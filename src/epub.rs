@@ -67,7 +67,7 @@ pub fn html_to_styled_string(selector: &str, html: &str) -> Result<StyledString,
 
     let content = content
         .first()
-        .ok_or(ArchiveError::UnableToFindSelector(selector.into()))?;
+        .ok_or_else(|| ArchiveError::UnableToFindSelector(selector.into()))?;
 
     #[derive(Copy, Clone, Debug, PartialEq)]
     enum Mode {
