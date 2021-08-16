@@ -55,11 +55,20 @@ async fn main() {
     library(&mut siv).unwrap();
 
     siv.add_global_callback('q', |s| s.quit());
+    siv.add_global_callback('l', |s| {
+        if let Err(e) = library(s) {
+            error(s, e);
+        }
+    });
     siv.run();
 }
 
 fn error(s: &mut Cursive, e: DatabaseError) {
-    s.add_layer(Dialog::around(TextView::new(format!("{:?}", e))).title("Error"));
+    s.add_layer(
+        Dialog::around(TextView::new(format!("{:?}", e)))
+            .title("Error")
+            .button("Close", |s| { s.pop_layer(); } )
+    );
 }
 
 fn library(s: &mut Cursive) -> Result<(), DatabaseError> {
@@ -75,7 +84,7 @@ fn library(s: &mut Cursive) -> Result<(), DatabaseError> {
     }
 
     view.set_on_submit(|s, id| {
-        if let Err(e) = chapter(s, *id, 100) {
+        if let Err(e) = chapter(s, *id, 0) {
             error(s, e);
         }
     });
@@ -95,8 +104,28 @@ fn chapter(s: &mut Cursive, id: i64, index: usize) -> Result<(), DatabaseError> 
     let html = epub::get_chapter_html(book.path, index)?;
     let styled_text = html_to_styled_string("body", &html[..])?;
 
+    let mut dialog = Dialog::around(TextView::new(styled_text).scrollable());
+
+    let index_p = index;
+    let id_p = id;
+    if index > 0 {
+        dialog.add_button("Previous", move |s| {
+            if let Err(e) = chapter(s, id_p, index_p - 1) {
+                error(s, e);
+            }
+        });
+    }
+
+    if true {
+        dialog.add_button("Next", move |s| {
+            if let Err(e) = chapter(s, id, index + 1) {
+                error(s, e);
+            }
+        });
+    }
+
     s.pop_layer();
-    s.add_layer(Dialog::around(TextView::new(styled_text).scrollable()));
+    s.add_layer(dialog);
 
     Ok(())
 }
