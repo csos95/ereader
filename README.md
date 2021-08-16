@@ -15,7 +15,8 @@
     - [x] get chapter from epub
     - [x] parse and style the html
     - [x] display in scroll view
-    - [ ] prev/next chapter
+    - [x] prev/next chapter
+    - [ ] table of contents
     - [ ] bookmark
 - bookmark
     - [ ] list
