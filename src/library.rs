@@ -1,4 +1,5 @@
 use crate::scan::SourceBook;
+use crate::Error;
 use sqlx::SqlitePool;
 use sqlx::{query, query_as};
 
@@ -22,20 +23,20 @@ pub async fn insert_book(pool: &SqlitePool, book: &SourceBook) -> Result<(), sql
     Ok(())
 }
 
-pub async fn update_book_path(pool: &SqlitePool, book: &Book) -> Result<(), sqlx::Error> {
+pub async fn update_book_path(pool: &SqlitePool, book: &Book) -> Result<(), Error> {
     query!("update books set path = ? where id = ?", book.path, book.id)
         .execute(pool)
         .await?;
     Ok(())
 }
 
-pub async fn get_books(pool: &SqlitePool) -> Result<Vec<Book>, sqlx::Error> {
+pub async fn get_books(pool: &SqlitePool) -> Result<Vec<Book>, Error> {
     Ok(query_as!(Book, "select * from books")
         .fetch_all(pool)
         .await?)
 }
 
-pub async fn get_book(pool: &SqlitePool, id: i64) -> Result<Book, sqlx::Error> {
+pub async fn get_book(pool: &SqlitePool, id: i64) -> Result<Book, Error> {
     Ok(query_as!(Book, "select * from books where id = ?", id)
         .fetch_one(pool)
         .await?)

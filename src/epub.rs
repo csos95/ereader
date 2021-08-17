@@ -1,3 +1,4 @@
+use crate::Error;
 use cursive::theme::{ColorStyle, Effect, Style};
 use cursive::utils::markup::StyledString;
 use ego_tree::iter::Edge;
@@ -6,58 +7,29 @@ use scraper::{ElementRef, Html, Selector};
 use std::fs::read;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
-use thiserror::Error;
 use wasmer_enumset::EnumSet;
 
-#[derive(Error, Debug)]
-pub enum ArchiveError {
-    #[error("unable to parse epub")]
-    UnableToParseEpub,
-    #[error("unable to get resource")]
-    UnableToGetResource,
-    #[error("invalid spine index: {0}")]
-    InvalidSpineIndex(usize),
-    #[error("io error {0}")]
-    IOError(std::io::Error),
-    #[error("anyhow error {0}")]
-    AnyhowError(anyhow::Error),
-    #[error("unable to parse html")]
-    UnableToParseHTML,
-    #[error("unable to find {0} in html")]
-    UnableToFindSelector(String),
-}
-
-impl From<std::io::Error> for ArchiveError {
-    fn from(e: std::io::Error) -> Self {
-        ArchiveError::IOError(e)
-    }
-}
-
-impl From<anyhow::Error> for ArchiveError {
-    fn from(e: anyhow::Error) -> Self {
-        ArchiveError::AnyhowError(e)
-    }
-}
-
-pub fn toc<P: AsRef<Path>>(path: P) -> Result<Vec<(String, PathBuf)>, ArchiveError> {
+pub fn toc<P: AsRef<Path>>(path: P) -> Result<Vec<(String, PathBuf)>, Error> {
     let buff = read(&path)?;
     let cursor = Cursor::new(buff);
-    let mut doc = EpubDoc::from_reader(cursor).map_err(|_| ArchiveError::UnableToParseEpub)?;
+    let doc = EpubDoc::from_reader(cursor).map_err(|_| Error::UnableToParseEpub)?;
 
-    let toc = doc.toc.iter()
+    let toc = doc
+        .toc
+        .iter()
         .map(|nav| (nav.label.clone(), nav.content.clone()))
         .collect::<Vec<(String, PathBuf)>>();
 
     Ok(toc)
 }
 
-pub fn get_chapter_html<P: AsRef<Path>>(path: P, index: usize) -> Result<String, ArchiveError> {
+pub fn get_chapter_html<P: AsRef<Path>>(path: P, index: usize) -> Result<String, Error> {
     let buff = read(&path)?;
     let cursor = Cursor::new(buff);
-    let mut doc = EpubDoc::from_reader(cursor).map_err(|_| ArchiveError::UnableToParseEpub)?;
+    let mut doc = EpubDoc::from_reader(cursor).map_err(|_| Error::UnableToParseEpub)?;
 
     if index >= doc.spine.len() {
-        return Err(ArchiveError::InvalidSpineIndex(index));
+        return Err(Error::InvalidSpineIndex(index));
     }
 
     let id = doc.spine[index].clone();
@@ -66,12 +38,11 @@ pub fn get_chapter_html<P: AsRef<Path>>(path: P, index: usize) -> Result<String,
 
 // TODO: change this to a function that returns a linear layout so that
 // alignment can be set on the text (such as horizontal lines).
-pub fn html_to_styled_string(selector: &str, html: &str) -> Result<StyledString, ArchiveError> {
+pub fn html_to_styled_string(selector: &str, html: &str) -> Result<StyledString, Error> {
     let html = html.replace("\t", "    ");
     let html = html.replace("\u{9d}", "");
     let document = Html::parse_document(&html);
-    let content_selector =
-        Selector::parse(selector).map_err(|_| ArchiveError::UnableToParseHTML)?;
+    let content_selector = Selector::parse(selector).map_err(|_| Error::UnableToParseHTML)?;
 
     let content = document
         .select(&content_selector)
@@ -79,7 +50,7 @@ pub fn html_to_styled_string(selector: &str, html: &str) -> Result<StyledString,
 
     let content = content
         .first()
-        .ok_or_else(|| ArchiveError::UnableToFindSelector(selector.into()))?;
+        .ok_or_else(|| Error::UnableToFindSelector(selector.into()))?;
 
     #[derive(Copy, Clone, Debug, PartialEq)]
     enum Mode {

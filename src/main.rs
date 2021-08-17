@@ -11,36 +11,42 @@ use sqlx::SqlitePool;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum DatabaseError {
-    #[error("database connection error: {0}")]
-    ConnectionError(String),
-    #[error("unable to set database connection")]
-    UnableToSetConnection,
-    #[error("unable to get database connection")]
-    UnableToGetConnection,
-    #[error("database connection is not set")]
-    ConnectionNotSet,
-    #[error("query error: {0}")]
-    QueryError(String),
-    #[error("misc error: {0}")]
-    MiscError(String),
-    #[error("diesel migration error: {0}")]
-    MigrationError(String),
+pub enum Error {
     #[error("sqlx error {0}")]
     SqlxError(sqlx::Error),
-    #[error("archive error {0}")]
-    ArchiveError(epub::ArchiveError),
+    #[error("unable to parse epub")]
+    UnableToParseEpub,
+    #[error("{0} is missing metadata tag {1}")]
+    MissingMetadata(String, String),
+    #[error("unable to get resource")]
+    UnableToGetResource,
+    #[error("invalid spine index: {0}")]
+    InvalidSpineIndex(usize),
+    #[error("anyhow error {0}")]
+    AnyhowError(anyhow::Error),
+    #[error("unable to parse html")]
+    UnableToParseHTML,
+    #[error("unable to find {0} in html")]
+    UnableToFindSelector(String),
+    #[error("io error {0}")]
+    IOError(std::io::Error),
 }
 
-impl From<sqlx::Error> for DatabaseError {
+impl From<sqlx::Error> for Error {
     fn from(e: sqlx::Error) -> Self {
-        DatabaseError::SqlxError(e)
+        Error::SqlxError(e)
     }
 }
 
-impl From<epub::ArchiveError> for DatabaseError {
-    fn from(e: epub::ArchiveError) -> Self {
-        DatabaseError::ArchiveError(e)
+impl From<std::io::Error> for Error {
+    fn from(e: std::io::Error) -> Self {
+        Error::IOError(e)
+    }
+}
+
+impl From<anyhow::Error> for Error {
+    fn from(e: anyhow::Error) -> Self {
+        Error::AnyhowError(e)
     }
 }
 
@@ -63,15 +69,17 @@ async fn main() {
     siv.run();
 }
 
-fn error(s: &mut Cursive, e: DatabaseError) {
+fn error(s: &mut Cursive, e: Error) {
     s.add_layer(
         Dialog::around(TextView::new(format!("{:?}", e)))
             .title("Error")
-            .button("Close", |s| { s.pop_layer(); } )
+            .button("Close", |s| {
+                s.pop_layer();
+            }),
     );
 }
 
-fn library(s: &mut Cursive) -> Result<(), DatabaseError> {
+fn library(s: &mut Cursive) -> Result<(), Error> {
     let books = task::block_on(async {
         let pool = s.user_data().unwrap();
         library::get_books(pool).await
@@ -95,7 +103,7 @@ fn library(s: &mut Cursive) -> Result<(), DatabaseError> {
     Ok(())
 }
 
-fn chapter(s: &mut Cursive, id: i64, index: usize) -> Result<(), DatabaseError> {
+fn chapter(s: &mut Cursive, id: i64, index: usize) -> Result<(), Error> {
     let book = task::block_on(async {
         let pool = s.user_data().unwrap();
         library::get_book(pool, id).await
@@ -136,8 +144,7 @@ fn chapter(s: &mut Cursive, id: i64, index: usize) -> Result<(), DatabaseError> 
     Ok(())
 }
 
-
-fn toc(s: &mut Cursive, book: &library::Book) -> Result<(), DatabaseError> {
+fn toc(s: &mut Cursive, book: &library::Book) -> Result<(), Error> {
     let toc = epub::toc(&book.path)?;
 
     let mut view = SelectView::new();
@@ -146,7 +153,7 @@ fn toc(s: &mut Cursive, book: &library::Book) -> Result<(), DatabaseError> {
         view.add_item(label, (book.id, content));
     }
 
-    view.set_on_submit(|s, (id, content)| {
+    view.set_on_submit(|s, (id, _content)| {
         s.pop_layer();
         if let Err(e) = chapter(s, *id, 0) {
             error(s, e);
@@ -156,15 +163,10 @@ fn toc(s: &mut Cursive, book: &library::Book) -> Result<(), DatabaseError> {
     s.add_layer(
         Dialog::around(view.scrollable())
             .title("Table of Contents")
-            .button("Close", |s| { s.pop_layer(); })
+            .button("Close", |s| {
+                s.pop_layer();
+            }),
     );
 
     Ok(())
 }
-
-
-
-
-
-
-

@@ -1,4 +1,5 @@
 use crate::library;
+use crate::Error;
 use epub::doc::EpubDoc;
 use itertools::{Either, Itertools};
 use sqlx::SqlitePool;
@@ -6,31 +7,6 @@ use std::collections::HashMap;
 use std::fs::{read, read_dir};
 use std::io::Cursor;
 use std::path::Path;
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum ArchiveError {
-    #[error("unable to parse epub")]
-    UnableToParseEpub,
-    #[error("{0} is missing metadata tag {1}")]
-    MissingMetadata(String, String),
-    #[error("io error {0}")]
-    IOError(std::io::Error),
-    #[error("sqlx error {0}")]
-    SqlxError(sqlx::Error),
-}
-
-impl From<std::io::Error> for ArchiveError {
-    fn from(e: std::io::Error) -> Self {
-        ArchiveError::IOError(e)
-    }
-}
-
-impl From<sqlx::Error> for ArchiveError {
-    fn from(e: sqlx::Error) -> Self {
-        ArchiveError::SqlxError(e)
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct SourceBook {
@@ -43,7 +19,7 @@ pub struct SourceBook {
     pub path: String,
 }
 
-pub async fn scan<P: AsRef<Path>>(pool: &SqlitePool, path: P) -> Result<(), ArchiveError> {
+pub async fn scan<P: AsRef<Path>>(pool: &SqlitePool, path: P) -> Result<(), Error> {
     // get the books in the epub directory
     let (found_books, errors) = scan_directory(path)?;
     let found_map = found_books
@@ -130,11 +106,9 @@ pub async fn scan<P: AsRef<Path>>(pool: &SqlitePool, path: P) -> Result<(), Arch
     Ok(())
 }
 
-pub fn scan_directory<P: AsRef<Path>>(
-    path: P,
-) -> Result<(Vec<SourceBook>, Vec<ArchiveError>), ArchiveError> {
+pub fn scan_directory<P: AsRef<Path>>(path: P) -> Result<(Vec<SourceBook>, Vec<Error>), Error> {
     // get books in current directory
-    let (mut books, mut errors): (Vec<SourceBook>, Vec<ArchiveError>) = read_dir(&path)?
+    let (mut books, mut errors): (Vec<SourceBook>, Vec<Error>) = read_dir(&path)?
         .filter_map(|entry| entry.ok())
         .filter(|dir| dir.path().extension().unwrap_or_default() == "epub")
         .partition_map(|dir| match scan_book(dir.path()) {
@@ -164,10 +138,10 @@ pub fn scan_directory<P: AsRef<Path>>(
     Ok((books, errors))
 }
 
-fn scan_book<P: AsRef<Path>>(path: P) -> Result<SourceBook, ArchiveError> {
+fn scan_book<P: AsRef<Path>>(path: P) -> Result<SourceBook, Error> {
     let buff = read(&path)?;
     let cursor = Cursor::new(buff);
-    let doc = EpubDoc::from_reader(cursor).map_err(|_| ArchiveError::UnableToParseEpub)?;
+    let doc = EpubDoc::from_reader(cursor).map_err(|_| Error::UnableToParseEpub)?;
 
     Ok(SourceBook {
         identifier: get_metadata(&path, &doc, "title")?,
@@ -184,9 +158,8 @@ fn get_metadata<P: AsRef<Path>>(
     path: P,
     doc: &EpubDoc<Cursor<Vec<u8>>>,
     tag: &str,
-) -> Result<String, ArchiveError> {
-    doc.mdata(tag).ok_or_else(|| ArchiveError::MissingMetadata(
-        path.as_ref().to_string_lossy().to_string(),
-        tag.to_string(),
-    ))
+) -> Result<String, Error> {
+    doc.mdata(tag).ok_or_else(|| {
+        Error::MissingMetadata(path.as_ref().to_string_lossy().to_string(), tag.to_string())
+    })
 }
