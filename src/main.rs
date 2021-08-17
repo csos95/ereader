@@ -3,11 +3,13 @@ mod library;
 mod scan;
 
 use crate::epub::html_to_styled_string;
+use ::epub::doc::EpubDoc;
 use async_std::task;
 use cursive::traits::Scrollable;
+use cursive::view::Resizable;
 use cursive::views::{Dialog, SelectView, TextView};
 use cursive::{Cursive, CursiveExt};
-use ::epub::doc::EpubDoc;
+use library::Book;
 use sqlx::SqlitePool;
 use thiserror::Error;
 
@@ -51,11 +53,6 @@ impl From<anyhow::Error> for Error {
     }
 }
 
-struct UserData {
-    pool: SqlitePool,
-    epub: Option<EpubDoc<std::io::Cursor<Vec<u8>>>>,
-}
-
 struct Model {
     pool: SqlitePool,
     page: Page,
@@ -63,80 +60,130 @@ struct Model {
 
 struct Chapter {
     epub: EpubDoc<std::io::Cursor<Vec<u8>>>,
+    path: String,
     index: usize,
 }
 
+struct TableOfContents {
+    chapter: Chapter,
+    toc: Vec<(String, usize)>,
+}
+
 enum Page {
-    Library,
+    Library(Vec<Book>),
     Chapter(Chapter),
+    TableOfContents(TableOfContents),
 }
 
 enum Msg {
     GoLibrary,
-    GoChapter(usize),
+    GoChapter(String, usize),
+    NextChapter,
+    PrevChapter,
+    GoTOC,
 }
 
-fn update(s: &mut Cursive, msg: Msg) {
-    let model: Model = s.take_user_data().unwrap();
-    let page = match (msg, model.page) {
-        (Msg::GoLibrary, _) => Page::Library,
-        (Msg::GoChapter(index), Page::Chapter(mut chapter)) => {
-            chapter.epub.set_current_page(index).expect("invalid page");
-            chapter.index = index;
-            Page::Chapter(chapter)
-        },
-        (Msg::GoChapter(index), _) => {
-            Page::Library
-        },
-    };
-    s.set_user_data(Model {
-        pool: model.pool,
-        page,
-    });
+async fn init() -> Result<Model, Error> {
+    let pool = SqlitePool::connect("ereader.sqlite").await?;
+    scan::scan(&pool, "epub").await?;
+
+    let books = library::get_books(&pool).await?;
+
+    Ok(Model {
+        pool,
+        page: Page::Library(books),
+    })
 }
 
-fn view(s: &mut Cursive, model: Model) {
-    match model.page {
-        _ => {},
-    }
-}
+fn update_view(s: &mut Cursive, msg: Msg) {
+    let mut model: Model = s.take_user_data().unwrap();
 
-fn chapter_d2(s: &mut Cursive, chapter: &mut Chapter) -> Result<(), Error> {
-    let html = chapter.epub.get_current_str()?;
-    let styled_text = html_to_styled_string("body", &html[..])?;
-
-    let mut dialog = Dialog::around(TextView::new(styled_text).scrollable());
-
-    if chapter.index + 1 < chapter.epub.get_num_pages() {
-        let next = chapter.index + 1;
-        dialog.add_button("Next", move |s| {
-            s.cb_sink()
-                .send(Box::new(move |s| update(s, Msg::GoChapter(next))))
-                .unwrap();
-        });
-    }
-
+    model = update(msg, model).unwrap();
     s.pop_layer();
-    s.add_layer(dialog);
+    view(s, &mut model).unwrap();
+
+    s.set_user_data(model);
+}
+
+fn update(msg: Msg, mut model: Model) -> Result<Model, Error> {
+    let pool = &model.pool;
+    model.page = match (msg, model.page) {
+        (Msg::GoLibrary, _) => {
+            let books = task::block_on(async { library::get_books(pool).await })?;
+            Page::Library(books)
+        }
+        (
+            Msg::GoChapter(new_path, new_index),
+            Page::Chapter(Chapter {
+                path,
+                mut epub,
+                mut index,
+            }),
+        ) if new_path == path => {
+            epub.set_current_page(index).expect("invalid page");
+            index = new_index;
+            Page::Chapter(Chapter { epub, path, index })
+        }
+        (Msg::GoChapter(path, index), _) => {
+            let mut epub = epub::read_epub(&path)?;
+            epub.set_current_page(index).expect("invalid page");
+            Page::Chapter(Chapter { epub, path, index })
+        }
+        (Msg::NextChapter, Page::Chapter(mut chapter)) => {
+            chapter
+                .epub
+                .set_current_page(chapter.index + 1)
+                .expect("invalid page");
+            chapter.index += 1;
+            Page::Chapter(chapter)
+        }
+        (Msg::PrevChapter, Page::Chapter(mut chapter)) => {
+            chapter
+                .epub
+                .set_current_page(chapter.index - 1)
+                .expect("invalid page");
+            chapter.index -= 1;
+            Page::Chapter(chapter)
+        }
+        (Msg::GoTOC, Page::Chapter(chapter)) => {
+            let toc = epub::toc(&chapter.path)?
+                .into_iter()
+                .map(|(title, path)| {
+                    let index = chapter.epub.resource_uri_to_chapter(&path).unwrap();
+                    (title, index)
+                })
+                .collect::<Vec<(String, usize)>>();
+            Page::TableOfContents(TableOfContents { chapter, toc })
+        }
+        (_msg, page) => page,
+    };
+
+    Ok(model)
+}
+
+fn view(s: &mut Cursive, model: &mut Model) -> Result<(), Error> {
+    match &mut model.page {
+        Page::Chapter(chapter) => view_chapter(s, chapter)?,
+        Page::Library(books) => view_library(s, &books)?,
+        Page::TableOfContents(toc) => view_toc(s, &toc)?,
+    }
 
     Ok(())
 }
 
 #[async_std::main]
 async fn main() {
-    let pool = SqlitePool::connect("ereader.sqlite").await.unwrap();
-    scan::scan(&pool, "epub").await.unwrap();
-
     let mut siv = Cursive::new();
-    siv.set_user_data(UserData { pool, epub: None });
 
-    library(&mut siv).unwrap();
+    let mut model = init().await.unwrap();
+    view(&mut siv, &mut model).unwrap();
+    siv.set_user_data(model);
 
     siv.add_global_callback('q', |s| s.quit());
     siv.add_global_callback('l', |s| {
-        if let Err(e) = library(s) {
-            error(s, e);
-        }
+        s.cb_sink()
+            .send(Box::new(move |s| update_view(s, Msg::GoLibrary)))
+            .unwrap();
     });
     siv.run();
 }
@@ -147,146 +194,88 @@ fn error(s: &mut Cursive, e: Error) {
             .title("Error")
             .button("Close", |s| {
                 s.pop_layer();
-            }),
+            })
+            .max_width(80),
     );
 }
 
-fn library(s: &mut Cursive) -> Result<(), Error> {
-    let books = task::block_on(async {
-        let user_data: &mut UserData = s.user_data().unwrap();
-        library::get_books(&user_data.pool).await
-    })?;
-
+fn view_library(s: &mut Cursive, books: &Vec<Book>) -> Result<(), Error> {
     let mut view = SelectView::new();
 
     for book in books {
-        view.add_item(book.title, book.path.clone());
+        view.add_item(book.title.clone(), book.path.clone());
     }
 
     view.set_on_submit(|s: &mut Cursive, path: &String| {
-        match epub::read_epub(path) {
-            Ok(mut epub) => {
-                epub.set_current_page(0);
-                s.with_user_data(|user_data: &mut UserData| {
-                    user_data.epub = Some(epub);
-                });
-                if let Err(e) = chapter_d(s) {
-                    error(s, e);
-                }
-            },
-            Err(e) => {
-                error(s, e);
-            },
-        }
+        let c_path = path.to_string();
+        s.cb_sink()
+            .send(Box::new(move |s| update_view(s, Msg::GoChapter(c_path, 0))))
+            .unwrap();
     });
 
-    s.pop_layer();
-    s.add_layer(Dialog::around(view.scrollable()).title("Library"));
+    s.add_layer(
+        Dialog::around(view.scrollable())
+            .title("Library")
+            .max_width(80),
+    );
 
     Ok(())
 }
 
-fn chapter_d(s: &mut Cursive) -> Result<(), Error> {
-    let html = s.with_user_data(|user_data: &mut UserData| {
-        user_data.epub
-            .as_mut().unwrap()
-            .get_current_str()
-    }).unwrap()?;
+fn view_chapter(s: &mut Cursive, chapter: &mut Chapter) -> Result<(), Error> {
+    let html = chapter.epub.get_current_str()?;
     let styled_text = html_to_styled_string("body", &html[..])?;
 
     let mut dialog = Dialog::around(TextView::new(styled_text).scrollable());
 
-    dialog.add_button("Next", |s| {
-        s.with_user_data(|user_data: &mut UserData| {
-            user_data.epub
-                .as_mut().unwrap()
-                .go_next()
-        });
-        if let Err(e) = chapter_d(s) {
-            error(s, e);
-        }
-    });
-
-    dialog.add_button("Previous", |s| {
-        s.with_user_data(|user_data: &mut UserData| {
-            user_data.epub
-                .as_mut().unwrap()
-                .go_prev()
-        });
-        if let Err(e) = chapter_d(s) {
-            error(s, e);
-        }
-    });
-
-    s.pop_layer();
-    s.add_layer(dialog);
-
-    Ok(())
-}
-
-fn chapter(s: &mut Cursive, id: i64, index: usize) -> Result<(), Error> {
-    let book = task::block_on(async {
-        let user_data: &mut UserData = s.user_data().unwrap();
-        library::get_book(&user_data.pool, id).await
-    })?;
-
-    let html = epub::get_chapter_html(&book.path, index)?;
-    let styled_text = html_to_styled_string("body", &html[..])?;
-
-    let mut dialog = Dialog::around(TextView::new(styled_text).scrollable());
-
-    let index_n = index;
-    let id_n = id;
-    if true {
+    if chapter.index + 1 < chapter.epub.get_num_pages() {
         dialog.add_button("Next", move |s| {
-            if let Err(e) = chapter(s, id_n, index_n + 1) {
-                error(s, e);
-            }
+            s.cb_sink()
+                .send(Box::new(move |s| update_view(s, Msg::NextChapter)))
+                .unwrap();
         });
     }
 
-    if index > 0 {
-        dialog.add_button("Previous", move |s| {
-            if let Err(e) = chapter(s, id, index - 1) {
-                error(s, e);
-            }
+    if chapter.index > 0 {
+        dialog.add_button("Prev", move |s| {
+            s.cb_sink()
+                .send(Box::new(move |s| update_view(s, Msg::PrevChapter)))
+                .unwrap();
         });
     }
 
     dialog.add_button("TOC", move |s| {
-        if let Err(e) = toc(s, &book) {
-            error(s, e);
-        }
+        s.cb_sink()
+            .send(Box::new(move |s| update_view(s, Msg::GoTOC)))
+            .unwrap();
     });
 
-    s.pop_layer();
-    s.add_layer(dialog);
+    s.add_layer(dialog.max_width(80));
 
     Ok(())
 }
 
-fn toc(s: &mut Cursive, book: &library::Book) -> Result<(), Error> {
-    let toc = epub::toc(&book.path)?;
-
+fn view_toc(s: &mut Cursive, toc: &TableOfContents) -> Result<(), Error> {
     let mut view = SelectView::new();
 
-    for (label, content) in toc {
-        view.add_item(label, (book.id, content));
+    for (title, index) in &toc.toc {
+        view.add_item(title.to_string(), (toc.chapter.path.clone(), *index));
     }
 
-    view.set_on_submit(|s, (id, _content)| {
-        s.pop_layer();
-        if let Err(e) = chapter(s, *id, 0) {
-            error(s, e);
-        }
+    view.set_on_submit(|s, (path, index)| {
+        let c_path = path.to_string();
+        let c_index = *index;
+        s.cb_sink()
+            .send(Box::new(move |s| {
+                update_view(s, Msg::GoChapter(c_path, c_index))
+            }))
+            .unwrap();
     });
 
     s.add_layer(
         Dialog::around(view.scrollable())
             .title("Table of Contents")
-            .button("Close", |s| {
-                s.pop_layer();
-            }),
+            .max_width(80),
     );
 
     Ok(())
