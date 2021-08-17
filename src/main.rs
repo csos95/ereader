@@ -94,17 +94,66 @@ fn library(s: &mut Cursive) -> Result<(), Error> {
     let mut view = SelectView::new();
 
     for book in books {
-        view.add_item(book.title, book.id);
+        view.add_item(book.title, book.path.clone());
     }
 
-    view.set_on_submit(|s, id| {
-        if let Err(e) = chapter(s, *id, 0) {
-            error(s, e);
+    view.set_on_submit(|s: &mut Cursive, path: &String| {
+        match epub::read_epub(path) {
+            Ok(mut epub) => {
+                epub.set_current_page(0);
+                s.with_user_data(|user_data: &mut UserData| {
+                    user_data.epub = Some(epub);
+                });
+                if let Err(e) = chapter_d(s) {
+                    error(s, e);
+                }
+            },
+            Err(e) => {
+                error(s, e);
+            },
         }
     });
 
     s.pop_layer();
     s.add_layer(Dialog::around(view.scrollable()).title("Library"));
+
+    Ok(())
+}
+
+fn chapter_d(s: &mut Cursive) -> Result<(), Error> {
+    let html = s.with_user_data(|user_data: &mut UserData| {
+        user_data.epub
+            .as_mut().unwrap()
+            .get_current_str()
+    }).unwrap()?;
+    let styled_text = html_to_styled_string("body", &html[..])?;
+
+    let mut dialog = Dialog::around(TextView::new(styled_text).scrollable());
+
+    dialog.add_button("Next", |s| {
+        s.with_user_data(|user_data: &mut UserData| {
+            user_data.epub
+                .as_mut().unwrap()
+                .go_next()
+        });
+        if let Err(e) = chapter_d(s) {
+            error(s, e);
+        }
+    });
+
+    dialog.add_button("Previous", |s| {
+        s.with_user_data(|user_data: &mut UserData| {
+            user_data.epub
+                .as_mut().unwrap()
+                .go_prev()
+        });
+        if let Err(e) = chapter_d(s) {
+            error(s, e);
+        }
+    });
+
+    s.pop_layer();
+    s.add_layer(dialog);
 
     Ok(())
 }
