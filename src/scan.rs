@@ -19,6 +19,19 @@ pub struct SourceBook {
     pub path: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct SourceChapter {
+    pub index: usize,
+    pub content: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct TOC {
+    pub index: usize,
+    pub title: String,
+    pub spine_index: usize,
+}
+
 pub async fn scan<P: AsRef<Path>>(pool: &SqlitePool, path: P) -> Result<(), Error> {
     // get the books in the epub directory
     let (found_books, errors) = scan_directory(path)?;
