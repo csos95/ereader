@@ -1,3 +1,17 @@
+
+## Installation
+
+Requirements:
+- libsqlite3
+- rust
+
+1. clone repository and cd into it
+2. initialize database with `sqlite3 ereader.sqlite < schema.sql`
+3. compile project with `DATABASE_URL=sqlite://./ereader.sqlite cargo build --release`
+4. put epub files in a directory named `epub`
+5. run the project with `target/release/ereader`
+
+## Todo
 - book
     - [x] scan epub directory
     - [x] get metadata from epubs
@@ -16,7 +30,7 @@
     - [x] parse and style the html
     - [x] display in scroll view
     - [x] prev/next chapter
-    - [ ] table of contents
+    - [x] table of contents
     - [ ] bookmark
 - bookmark
     - [ ] list
@@ -30,3 +44,6 @@
     - [ ] have add books menu that lists books not currently in
     - [ ] have add to bookshelf button on books
     - [ ] have remove button in bookshelf
+- import to database
+    - [ ] store chapters in database
+    - [ ] store table of contents in database
