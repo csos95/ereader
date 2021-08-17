@@ -56,6 +56,72 @@ struct UserData {
     epub: Option<EpubDoc<std::io::Cursor<Vec<u8>>>>,
 }
 
+struct Model {
+    pool: SqlitePool,
+    page: Page,
+}
+
+struct Chapter {
+    epub: EpubDoc<std::io::Cursor<Vec<u8>>>,
+    index: usize,
+}
+
+enum Page {
+    Library,
+    Chapter(Chapter),
+}
+
+enum Msg {
+    GoLibrary,
+    GoChapter(usize),
+}
+
+fn update(s: &mut Cursive, msg: Msg) {
+    let model: Model = s.take_user_data().unwrap();
+    let page = match (msg, model.page) {
+        (Msg::GoLibrary, _) => Page::Library,
+        (Msg::GoChapter(index), Page::Chapter(mut chapter)) => {
+            chapter.epub.set_current_page(index).expect("invalid page");
+            chapter.index = index;
+            Page::Chapter(chapter)
+        },
+        (Msg::GoChapter(index), _) => {
+            Page::Library
+        },
+    };
+    s.set_user_data(Model {
+        pool: model.pool,
+        page,
+    });
+}
+
+fn view(s: &mut Cursive, model: Model) {
+    match model.page {
+        _ => {},
+    }
+}
+
+fn chapter_d2(s: &mut Cursive, chapter: &mut Chapter) -> Result<(), Error> {
+    let html = chapter.epub.get_current_str()?;
+    let styled_text = html_to_styled_string("body", &html[..])?;
+
+    let mut dialog = Dialog::around(TextView::new(styled_text).scrollable());
+
+    if chapter.index + 1 < chapter.epub.get_num_pages() {
+        let next = chapter.index + 1;
+        dialog.add_button("Next", move |s| {
+            s.cb_sink()
+                .send(Box::new(move |s| update(s, Msg::GoChapter(next))))
+                .unwrap();
+        });
+    }
+
+    s.pop_layer();
+    s.add_layer(dialog);
+
+    Ok(())
+}
+
 #[async_std::main]
 async fn main() {
     let pool = SqlitePool::connect("ereader.sqlite").await.unwrap();
