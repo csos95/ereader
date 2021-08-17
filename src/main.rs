@@ -7,6 +7,7 @@ use async_std::task;
 use cursive::traits::Scrollable;
 use cursive::views::{Dialog, SelectView, TextView};
 use cursive::{Cursive, CursiveExt};
+use ::epub::doc::EpubDoc;
 use sqlx::SqlitePool;
 use thiserror::Error;
 
@@ -50,13 +51,18 @@ impl From<anyhow::Error> for Error {
     }
 }
 
+struct UserData {
+    pool: SqlitePool,
+    epub: Option<EpubDoc<std::io::Cursor<Vec<u8>>>>,
+}
+
 #[async_std::main]
 async fn main() {
     let pool = SqlitePool::connect("ereader.sqlite").await.unwrap();
     scan::scan(&pool, "epub").await.unwrap();
 
     let mut siv = Cursive::new();
-    siv.set_user_data(pool);
+    siv.set_user_data(UserData { pool, epub: None });
 
     library(&mut siv).unwrap();
 
@@ -81,8 +87,8 @@ fn error(s: &mut Cursive, e: Error) {
 
 fn library(s: &mut Cursive) -> Result<(), Error> {
     let books = task::block_on(async {
-        let pool = s.user_data().unwrap();
-        library::get_books(pool).await
+        let user_data: &mut UserData = s.user_data().unwrap();
+        library::get_books(&user_data.pool).await
     })?;
 
     let mut view = SelectView::new();
@@ -105,8 +111,8 @@ fn library(s: &mut Cursive) -> Result<(), Error> {
 
 fn chapter(s: &mut Cursive, id: i64, index: usize) -> Result<(), Error> {
     let book = task::block_on(async {
-        let pool = s.user_data().unwrap();
-        library::get_book(pool, id).await
+        let user_data: &mut UserData = s.user_data().unwrap();
+        library::get_book(&user_data.pool, id).await
     })?;
 
     let html = epub::get_chapter_html(&book.path, index)?;

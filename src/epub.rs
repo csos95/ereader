@@ -9,6 +9,14 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use wasmer_enumset::EnumSet;
 
+pub fn read_epub<P: AsRef<Path>>(path: P) -> Result<EpubDoc<Cursor<Vec<u8>>>, Error> {
+    let buff = read(&path)?;
+    let cursor = Cursor::new(buff);
+    let doc = EpubDoc::from_reader(cursor).map_err(|_| Error::UnableToParseEpub)?;
+
+    Ok(doc)
+}
+
 pub fn toc<P: AsRef<Path>>(path: P) -> Result<Vec<(String, PathBuf)>, Error> {
     let buff = read(&path)?;
     let cursor = Cursor::new(buff);
