@@ -25,19 +25,19 @@ pub async fn insert_book(pool: &SqlitePool, book: &SourceBook) -> Result<(), sql
     let row = query!("select last_insert_rowid() as id")
         .fetch_one(&mut tx)
         .await?;
-    tx.commit().await?;
     println!("{:?}", row);
     let book_id: i64 = row.id.into();
     for chapter in &book.chapters {
-        insert_chapter(pool, book_id, chapter).await?;
+        insert_chapter(&mut tx, book_id, chapter).await?;
     }
+    tx.commit().await?;
 
     Ok(())
 }
 
-pub async fn insert_chapter(pool: &SqlitePool, book_id: i64, chapter: &SourceChapter) -> Result<(), sqlx::Error> {
+pub async fn insert_chapter(tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, book_id: i64, chapter: &SourceChapter) -> Result<(), sqlx::Error> {
     query!("insert into chapters(book_id, `index`, content) values (?, ?, ?)", book_id, chapter.index, chapter.content)
-        .execute(pool)
+        .execute(tx)
         .await?;
     Ok(())
 }

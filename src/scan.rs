@@ -129,7 +129,7 @@ fn scan_book<P: AsRef<Path>>(path: P) -> Result<SourceBook, Error> {
         .collect::<Vec<SourceChapter>>();
 
     Ok(SourceBook {
-        identifier: get_metadata(&path, &doc, "title")?,
+        identifier: get_metadata(&path, &doc, "identifier")?,
         language: get_metadata(&path, &doc, "language")?,
         title: get_metadata(&path, &doc, "title")?,
         creator: doc.mdata("creator"),
