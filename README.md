@@ -12,6 +12,16 @@ Requirements:
 5. run the project with `target/release/ereader`
 
 ## Todo
+- [ ] add file hash to the books table
+- [ ] scan for books and hash them with blake3
+- [ ] use the hashes to find new books
+- [ ] remove path from the books table and don't worry about lost/moved books?
+- [ ] get the chapters from books and insert those
+- [ ] get the table of contents from books and insert those
+- [ ] switch the main application over to pulling from the database
+- [ ] make illegal states unrepresentable and clean things up 
+
+## Features Todo
 - book
     - [x] scan epub directory
     - [x] get metadata from epubs
