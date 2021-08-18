@@ -8,7 +8,7 @@ create table books (
     creator text,
     description text,
     publisher text,
-    path text not null
+    hash text not null
 );
 
 create index book_titles_idx on books(title);

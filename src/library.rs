@@ -12,23 +12,23 @@ pub struct Book {
     pub creator: Option<String>,
     pub description: Option<String>,
     pub publisher: Option<String>,
-    pub path: String,
+    pub hash: String,
 }
 
 pub async fn insert_book(pool: &SqlitePool, book: &SourceBook) -> Result<(), sqlx::Error> {
-    query!("insert into books(identifier, language, title, creator, description, publisher, path) values (?, ?, ?, ?, ?, ?, ?)",
-    book.identifier, book.language, book.title, book.creator, book.description, book.publisher, book.path)
+    query!("insert into books(identifier, language, title, creator, description, publisher, hash) values (?, ?, ?, ?, ?, ?, ?)",
+    book.identifier, book.language, book.title, book.creator, book.description, book.publisher, book.hash)
         .execute(pool)
         .await?;
     Ok(())
 }
 
-pub async fn update_book_path(pool: &SqlitePool, book: &Book) -> Result<(), Error> {
-    query!("update books set path = ? where id = ?", book.path, book.id)
-        .execute(pool)
-        .await?;
-    Ok(())
-}
+// pub async fn update_book_path(pool: &SqlitePool, book: &Book) -> Result<(), Error> {
+//     query!("update books set path = ? where id = ?", book.path, book.id)
+//         .execute(pool)
+//         .await?;
+//     Ok(())
+// }
 
 pub async fn get_books(pool: &SqlitePool) -> Result<Vec<Book>, Error> {
     Ok(query_as!(Book, "select * from books")
