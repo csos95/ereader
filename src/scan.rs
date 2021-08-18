@@ -18,17 +18,18 @@ pub struct SourceBook {
     pub description: Option<String>,
     pub publisher: Option<String>,
     pub hash: String,
+    pub chapters: Vec<SourceChapter>,
 }
 
 #[derive(Clone, Debug)]
 pub struct SourceChapter {
-    pub index: usize,
+    pub index: i64,
     pub content: String,
 }
 
 #[derive(Clone, Debug)]
 pub struct TOC {
-    pub index: usize,
+    pub index: i64,
     pub title: String,
     pub spine_index: usize,
 }
@@ -114,7 +115,18 @@ fn scan_book<P: AsRef<Path>>(path: P) -> Result<SourceBook, Error> {
     let buff = read(&path)?;
     let hash = blake3::hash(buff.as_slice());
     let cursor = Cursor::new(buff);
-    let doc = EpubDoc::from_reader(cursor).map_err(|_| Error::UnableToParseEpub)?;
+    let mut doc = EpubDoc::from_reader(cursor).map_err(|_| Error::UnableToParseEpub)?;
+
+    let spine = doc.spine.clone();
+    let chapters = spine.into_iter()
+        .enumerate()
+        .map(|(i, id)| {
+            SourceChapter {
+                index: i as i64 + 1,
+                content: doc.get_resource_str(&id[..]).unwrap(),
+            }
+        })
+        .collect::<Vec<SourceChapter>>();
 
     Ok(SourceBook {
         identifier: get_metadata(&path, &doc, "title")?,
@@ -124,6 +136,7 @@ fn scan_book<P: AsRef<Path>>(path: P) -> Result<SourceBook, Error> {
         description: doc.mdata("description"),
         publisher: doc.mdata("publisher"),
         hash: hash.to_string(),
+        chapters,
     })
 }
 

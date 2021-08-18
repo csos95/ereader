@@ -1,4 +1,4 @@
-use crate::scan::SourceBook;
+use crate::scan::{SourceBook, SourceChapter};
 use crate::Error;
 use sqlx::SqlitePool;
 use sqlx::{query, query_as};
@@ -16,8 +16,27 @@ pub struct Book {
 }
 
 pub async fn insert_book(pool: &SqlitePool, book: &SourceBook) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
     query!("insert into books(identifier, language, title, creator, description, publisher, hash) values (?, ?, ?, ?, ?, ?, ?)",
     book.identifier, book.language, book.title, book.creator, book.description, book.publisher, book.hash)
+        .execute(&mut tx)
+        .await?;
+
+    let row = query!("select last_insert_rowid() as id")
+        .fetch_one(&mut tx)
+        .await?;
+    tx.commit().await?;
+    println!("{:?}", row);
+    let book_id: i64 = row.id.into();
+    for chapter in &book.chapters {
+        insert_chapter(pool, book_id, chapter).await?;
+    }
+
+    Ok(())
+}
+
+pub async fn insert_chapter(pool: &SqlitePool, book_id: i64, chapter: &SourceChapter) -> Result<(), sqlx::Error> {
+    query!("insert into chapters(book_id, `index`, content) values (?, ?, ?)", book_id, chapter.index, chapter.content)
         .execute(pool)
         .await?;
     Ok(())
