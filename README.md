@@ -20,9 +20,9 @@ Requirements:
 - [x] get the table of contents from books and insert those
 - [x] switch the main application over to pulling from the database
 - [x] don't scan at startup, instead have scan button on library page
+- [x] show something when the table of contents is empty/don't show button
 - [ ] make illegal states unrepresentable and clean things up 
 - [ ] ignore empty html tags
-- [ ] show something when the table of contents is empty/don't show button
 
 ## Features Todo
 - book
@@ -45,7 +45,7 @@ Requirements:
     - [x] prev/next chapter
     - [x] table of contents
     - [ ] ignore empty paragraph html tags (or all empty html tags?)
-    - [ ] show something when there is no table of contents or just don't add button?
+    - [x] show something when there is no table of contents or just don't add button?
     - [ ] bookmark
 - bookmark
     - [ ] list
@@ -60,8 +60,8 @@ Requirements:
     - [ ] have add to bookshelf button on books
     - [ ] have remove button in bookshelf
 - import to database
-    - [ ] store chapters in database
-    - [ ] store table of contents in database
+    - [x] store chapters in database
+    - [x] store table of contents in database
 - gutenberg
     - [ ] download catalog file from project gutenberg
     - [ ] parse and store metadata/epub download

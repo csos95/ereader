@@ -63,7 +63,7 @@ struct Model {
 enum Page {
     Library(Vec<Book>),
     Chapter(Chapter),
-    TableOfContents(Vec<Toc>),
+    TableOfContents(Vec<Toc>, i64),
 }
 
 enum Msg {
@@ -130,7 +130,7 @@ fn update(msg: Msg, mut model: Model) -> Result<Model, Error> {
         }
         (Msg::GoTOC, Page::Chapter(chapter)) => {
             let toc = task::block_on(async { library::get_toc(pool, chapter.book_id).await })?;
-            Page::TableOfContents(toc)
+            Page::TableOfContents(toc, chapter.book_id)
         }
         (Msg::GoChapterId(id), _) => {
             let chapter = task::block_on(async { library::get_chapter_by_id(pool, id).await })?;
@@ -161,7 +161,7 @@ fn view(s: &mut Cursive, model: &Model) {
     match &model.page {
         Page::Chapter(chapter) => view_chapter(s, chapter),
         Page::Library(books) => view_library(s, books),
-        Page::TableOfContents(toc) => view_toc(s, toc),
+        Page::TableOfContents(toc, book_id) => view_toc(s, toc, *book_id),
     }
 }
 
@@ -247,17 +247,25 @@ fn view_chapter(s: &mut Cursive, chapter: &Chapter) {
     s.add_layer(dialog.max_width(90));
 }
 
-fn view_toc(s: &mut Cursive, toc: &[Toc]) {
+fn view_toc(s: &mut Cursive, toc: &[Toc], book_id: i64) {
     let mut view = SelectView::new();
 
     for toc in toc {
         view.add_item(toc.title.clone(), toc.chapter_id);
     }
 
-    view.set_on_submit(|s, id| {
+    if toc.is_empty() {
+        view.add_item("No table of contents. Go to start.".to_string(), 0);
+    }
+
+    view.set_on_submit(move |s, id| {
         let c_id = *id;
         s.cb_sink()
-            .send(Box::new(move |s| update_view(s, Msg::GoChapterId(c_id))))
+            .send(Box::new(move |s| if c_id == 0 {
+                update_view(s, Msg::GoChapterIndex(book_id, 1));
+            } else {
+                update_view(s, Msg::GoChapterId(c_id));
+            }))
             .unwrap();
     });
 
