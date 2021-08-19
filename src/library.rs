@@ -106,7 +106,7 @@ pub async fn insert_toc(
 // }
 
 pub async fn get_books(pool: &SqlitePool) -> Result<Vec<Book>, Error> {
-    Ok(query_as!(Book, "select * from books")
+    Ok(query_as!(Book, "select * from books order by title")
         .fetch_all(pool)
         .await?)
 }

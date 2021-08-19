@@ -220,7 +220,7 @@ fn view_chapter(s: &mut Cursive, chapter: &mut Chapter) -> Result<(), Error> {
     });
     // }
 
-    if chapter.index > 0 {
+    if chapter.index > 1 {
         dialog.add_button("Prev", move |s| {
             s.cb_sink()
                 .send(Box::new(move |s| update_view(s, Msg::PrevChapter)))
