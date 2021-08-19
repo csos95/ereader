@@ -42,8 +42,8 @@ pub async fn insert_book(pool: &SqlitePool, book: &SourceBook) -> Result<(), sql
     let row = query!("select last_insert_rowid() as id")
         .fetch_one(&mut tx)
         .await?;
-    // println!("{:?}", row);
     let book_id: i64 = row.id.into();
+
     let mut chapter_ids = Vec::new();
     for chapter in &book.chapters {
         insert_chapter(&mut tx, book_id, chapter).await?;
@@ -54,9 +54,9 @@ pub async fn insert_book(pool: &SqlitePool, book: &SourceBook) -> Result<(), sql
         chapter_ids.push(chapter_id);
     }
 
-    for toc in &book.toc {
-        let chapter_id = chapter_ids[toc.index as usize - 1];
-        insert_toc(&mut tx, book_id, chapter_id, toc).await?;
+    for (i, toc) in book.toc.iter().enumerate() {
+        let chapter_id = chapter_ids[toc.spine_index as usize - 1];
+        insert_toc(&mut tx, book_id, chapter_id, i as i64, toc).await?;
     }
 
     tx.commit().await?;
@@ -84,12 +84,13 @@ pub async fn insert_toc(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     book_id: i64,
     chapter_id: i64,
+    index: i64,
     toc: &SourceTOC,
 ) -> Result<(), sqlx::Error> {
     query!(
         "insert into table_of_contents(book_id, `index`, chapter_id, title) values (?, ?, ?, ?)",
         book_id,
-        toc.index,
+        index,
         chapter_id,
         toc.title
     )

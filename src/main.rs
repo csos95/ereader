@@ -53,22 +53,13 @@ impl From<anyhow::Error> for Error {
     }
 }
 
+#[derive(Clone, Debug)]
 struct Model {
     pool: SqlitePool,
     page: Page,
 }
 
-// struct Chapter {
-//     epub: EpubDoc<std::io::Cursor<Vec<u8>>>,
-//     path: String,
-//     index: usize,
-// }
-//
-// struct TableOfContents {
-//     chapter: Chapter,
-//     toc: Vec<(String, usize)>,
-// }
-
+#[derive(Clone, Debug)]
 enum Page {
     Library(Vec<Book>),
     Chapter(Chapter),
@@ -97,13 +88,20 @@ async fn init() -> Result<Model, Error> {
 }
 
 fn update_view(s: &mut Cursive, msg: Msg) {
-    let mut model: Model = s.take_user_data().unwrap();
+    let model: Model = s.take_user_data().unwrap();
 
-    model = update(msg, model).unwrap();
-    s.pop_layer();
-    view(s, &mut model).unwrap();
-
-    s.set_user_data(model);
+    match update(msg, model.clone()) {
+        Ok(model) => {
+            s.pop_layer();
+            view(s, &model);
+        
+            s.set_user_data(model);
+        },
+        Err(e) => {
+            error(s, e);
+            s.set_user_data(model);
+        }
+    }
 }
 
 fn update(msg: Msg, mut model: Model) -> Result<Model, Error> {
@@ -142,14 +140,14 @@ fn update(msg: Msg, mut model: Model) -> Result<Model, Error> {
         // and not necessarily tied to the library page
         (Msg::Scan, Page::Library(_)) => {
             let books = task::block_on(async {
-                scan::scan(&pool, "epub").await?;
+                scan::scan(pool, "epub").await?;
                 library::get_books(pool).await
             })?;
             Page::Library(books)
         }
         (Msg::Scan, page) => {
             task::block_on(async {
-                scan::scan(&pool, "epub").await
+                scan::scan(pool, "epub").await
             })?;
             page
         }
@@ -159,22 +157,20 @@ fn update(msg: Msg, mut model: Model) -> Result<Model, Error> {
     Ok(model)
 }
 
-fn view(s: &mut Cursive, model: &mut Model) -> Result<(), Error> {
-    match &mut model.page {
-        Page::Chapter(chapter) => view_chapter(s, chapter)?,
-        Page::Library(books) => view_library(s, books)?,
-        Page::TableOfContents(toc) => view_toc(s, toc)?,
+fn view(s: &mut Cursive, model: &Model) {
+    match &model.page {
+        Page::Chapter(chapter) => view_chapter(s, chapter),
+        Page::Library(books) => view_library(s, books),
+        Page::TableOfContents(toc) => view_toc(s, toc),
     }
-
-    Ok(())
 }
 
 #[async_std::main]
 async fn main() {
     let mut siv = Cursive::new();
 
-    let mut model = init().await.unwrap();
-    view(&mut siv, &mut model).unwrap();
+    let model = init().await.unwrap();
+    view(&mut siv, &model);
     siv.set_user_data(model);
 
     siv.add_global_callback('q', |s| s.quit());
@@ -186,18 +182,18 @@ async fn main() {
     siv.run();
 }
 
-// fn error(s: &mut Cursive, e: Error) {
-//     s.add_layer(
-//         Dialog::around(TextView::new(format!("{:?}", e)))
-//             .title("Error")
-//             .button("Close", |s| {
-//                 s.pop_layer();
-//             })
-//             .max_width(90),
-//     );
-// }
+fn error(s: &mut Cursive, e: Error) {
+    s.add_layer(
+        Dialog::around(TextView::new(format!("{:?}", e)))
+            .title("Error")
+            .button("Close", |s| {
+                s.pop_layer();
+            })
+            .max_width(90),
+    );
+}
 
-fn view_library(s: &mut Cursive, books: &[Book]) -> Result<(), Error> {
+fn view_library(s: &mut Cursive, books: &[Book]) {
     let mut view = SelectView::new();
 
     for book in books {
@@ -219,12 +215,10 @@ fn view_library(s: &mut Cursive, books: &[Book]) -> Result<(), Error> {
             .button("Scan", |s| update_view(s, Msg::Scan))
             .max_width(90),
     );
-
-    Ok(())
 }
 
-fn view_chapter(s: &mut Cursive, chapter: &mut Chapter) -> Result<(), Error> {
-    let styled_text = html_to_styled_string("body", &chapter.content[..])?;
+fn view_chapter(s: &mut Cursive, chapter: &Chapter) {
+    let styled_text = html_to_styled_string("body", &chapter.content[..]).unwrap_or_default();
 
     let mut dialog = Dialog::around(TextView::new(styled_text).scrollable());
 
@@ -251,11 +245,9 @@ fn view_chapter(s: &mut Cursive, chapter: &mut Chapter) -> Result<(), Error> {
     });
 
     s.add_layer(dialog.max_width(90));
-
-    Ok(())
 }
 
-fn view_toc(s: &mut Cursive, toc: &[Toc]) -> Result<(), Error> {
+fn view_toc(s: &mut Cursive, toc: &[Toc]) {
     let mut view = SelectView::new();
 
     for toc in toc {
@@ -274,6 +266,4 @@ fn view_toc(s: &mut Cursive, toc: &[Toc]) -> Result<(), Error> {
             .title("Table of Contents")
             .max_width(90),
     );
-
-    Ok(())
 }

@@ -36,7 +36,7 @@ pub struct SourceChapter {
 
 #[derive(Clone, Debug)]
 pub struct SourceTOC {
-    pub index: i64,
+    pub spine_index: i64,
     pub title: String,
 }
 
@@ -123,22 +123,17 @@ fn scan_book<P: AsRef<Path>>(path: P) -> Result<SourceBook, Error> {
     let cursor = Cursor::new(buff);
     let mut doc = EpubDoc::from_reader(cursor).map_err(|_| Error::UnableToParseEpub)?;
 
-    // println!("{:#?}", doc.resources);
-
     let spine = doc.spine.clone();
     let chapters = spine
         .into_iter()
         .enumerate()
         .map(|(i, id)| {
-            // println!("{}", id);
             SourceChapter {
                 index: i as i64 + 1,
                 content: doc.get_resource_str(&id[..]).unwrap(),
             }
         })
         .collect::<Vec<SourceChapter>>();
-
-    // println!("{}", get_metadata(&path, &doc, "title")?);
 
     let toc = doc
         .toc
@@ -148,7 +143,6 @@ fn scan_book<P: AsRef<Path>>(path: P) -> Result<SourceBook, Error> {
             // I need to remove that so the link can be turned into a spine index.
             let mut url =
                 url::Url::parse(&format!("epub:///{}", nav.content.to_string_lossy())[..]).unwrap();
-            // println!("{:?}", url);
             url.set_fragment(None);
 
             let absolute_path = url.to_string();
@@ -160,16 +154,8 @@ fn scan_book<P: AsRef<Path>>(path: P) -> Result<SourceBook, Error> {
             let mut content_path = PathBuf::new();
             content_path.push(decoded_path);
 
-            // println!(
-            //     "{:?} {:?} {} {:?}",
-            //     &nav.content,
-            //     doc.resource_uri_to_chapter(&nav.content),
-            //     nav.label,
-            //     content_path,
-            // );
-
             SourceTOC {
-                index: doc.resource_uri_to_chapter(&content_path).unwrap() as i64 + 1,
+                spine_index: doc.resource_uri_to_chapter(&content_path).unwrap() as i64 + 1,
                 title: nav.label.clone(),
             }
         })
