@@ -178,7 +178,7 @@ async fn main() {
 //             .button("Close", |s| {
 //                 s.pop_layer();
 //             })
-//             .max_width(80),
+//             .max_width(90),
 //     );
 // }
 
@@ -201,7 +201,7 @@ fn view_library(s: &mut Cursive, books: &[Book]) -> Result<(), Error> {
     s.add_layer(
         Dialog::around(view.scrollable())
             .title("Library")
-            .max_width(80),
+            .max_width(90),
     );
 
     Ok(())
@@ -234,7 +234,7 @@ fn view_chapter(s: &mut Cursive, chapter: &mut Chapter) -> Result<(), Error> {
             .unwrap();
     });
 
-    s.add_layer(dialog.max_width(80));
+    s.add_layer(dialog.max_width(90));
 
     Ok(())
 }
@@ -256,7 +256,7 @@ fn view_toc(s: &mut Cursive, toc: &[Toc]) -> Result<(), Error> {
     s.add_layer(
         Dialog::around(view.scrollable())
             .title("Table of Contents")
-            .max_width(80),
+            .max_width(90),
     );
 
     Ok(())
