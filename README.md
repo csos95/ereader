@@ -17,7 +17,7 @@ Requirements:
 - [x] use the hashes to find new books
 - [x] remove path from the books table and don't worry about lost/moved books?
 - [x] get the chapters from books and insert those
-- [ ] get the table of contents from books and insert those
+- [x] get the table of contents from books and insert those
 - [ ] switch the main application over to pulling from the database
 - [ ] make illegal states unrepresentable and clean things up 
 - [ ] ignore empty html tags

@@ -1,13 +1,14 @@
 use crate::library;
 use crate::Error;
 use epub::doc::EpubDoc;
-use itertools::{Either, Itertools};
+use itertools::{cons_tuples, Either, Itertools};
+use percent_encoding::{percent_decode, percent_decode_str, percent_encode};
 use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs::{read, read_dir};
 use std::io::Cursor;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug)]
 pub struct SourceBook {
@@ -19,6 +20,7 @@ pub struct SourceBook {
     pub publisher: Option<String>,
     pub hash: String,
     pub chapters: Vec<SourceChapter>,
+    pub toc: Vec<SourceTOC>,
 }
 
 #[derive(Clone, Debug)]
@@ -27,11 +29,15 @@ pub struct SourceChapter {
     pub content: String,
 }
 
+// book_id integer not null,
+// `index` integer not null,
+// chapter_id integer not null,
+// title text not null,
+
 #[derive(Clone, Debug)]
-pub struct TOC {
+pub struct SourceTOC {
     pub index: i64,
     pub title: String,
-    pub spine_index: usize,
 }
 
 pub async fn scan<P: AsRef<Path>>(pool: &SqlitePool, path: P) -> Result<(), Error> {
@@ -117,16 +123,57 @@ fn scan_book<P: AsRef<Path>>(path: P) -> Result<SourceBook, Error> {
     let cursor = Cursor::new(buff);
     let mut doc = EpubDoc::from_reader(cursor).map_err(|_| Error::UnableToParseEpub)?;
 
+    // println!("{:#?}", doc.resources);
+
     let spine = doc.spine.clone();
-    let chapters = spine.into_iter()
+    let chapters = spine
+        .into_iter()
         .enumerate()
         .map(|(i, id)| {
+            // println!("{}", id);
             SourceChapter {
                 index: i as i64 + 1,
                 content: doc.get_resource_str(&id[..]).unwrap(),
             }
         })
         .collect::<Vec<SourceChapter>>();
+
+    // println!("{}", get_metadata(&path, &doc, "title")?);
+
+    let toc = doc
+        .toc
+        .iter()
+        .map(|nav| {
+            // Some TOC links have a fragment to jump to a specific spot in the chapter.
+            // I need to remove that so the link can be turned into a spine index.
+            let mut url =
+                url::Url::parse(&format!("epub:///{}", nav.content.to_string_lossy())[..]).unwrap();
+            // println!("{:?}", url);
+            url.set_fragment(None);
+
+            let absolute_path = url.to_string();
+            let relative_path = absolute_path.trim_start_matches("epub:///");
+            let decoded_path = percent_decode_str(relative_path)
+                .decode_utf8_lossy()
+                .to_string();
+
+            let mut content_path = PathBuf::new();
+            content_path.push(decoded_path);
+
+            // println!(
+            //     "{:?} {:?} {} {:?}",
+            //     &nav.content,
+            //     doc.resource_uri_to_chapter(&nav.content),
+            //     nav.label,
+            //     content_path,
+            // );
+
+            SourceTOC {
+                index: doc.resource_uri_to_chapter(&content_path).unwrap() as i64 + 1,
+                title: nav.label.clone(),
+            }
+        })
+        .collect::<Vec<SourceTOC>>();
 
     Ok(SourceBook {
         identifier: get_metadata(&path, &doc, "identifier")?,
@@ -137,6 +184,7 @@ fn scan_book<P: AsRef<Path>>(path: P) -> Result<SourceBook, Error> {
         publisher: doc.mdata("publisher"),
         hash: hash.to_string(),
         chapters,
+        toc,
     })
 }
 

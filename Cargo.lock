@@ -672,9 +672,11 @@ dependencies = [
  "epub",
  "itertools",
  "once_cell",
+ "percent-encoding",
  "scraper",
  "sqlx",
  "thiserror",
+ "url",
  "wasmer_enumset",
  "zip",
 ]
