@@ -75,9 +75,9 @@ pub fn html_to_styled_string(selector: &str, html: &str) -> Result<StyledString,
                     el if el.is_element() => {
                         let el = el.as_element().unwrap();
                         let local_name = el.name.local.to_string();
-                        if local_name == "i" {
+                        if local_name == "i" || local_name == "em" {
                             modes.push(Mode::Italic);
-                        } else if local_name == "em" {
+                        } else if local_name == "b" || local_name == "strong" {
                             modes.push(Mode::Bold);
                         } else if local_name == "br" || local_name == "p" || local_name == "div" {
                             styled_string.append_plain("\n");
