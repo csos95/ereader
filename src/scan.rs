@@ -1,8 +1,8 @@
 use crate::library;
 use crate::Error;
 use epub::doc::EpubDoc;
-use itertools::{cons_tuples, Either, Itertools};
-use percent_encoding::{percent_decode, percent_decode_str, percent_encode};
+use itertools::{Either, Itertools};
+use percent_encoding::percent_decode_str;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -48,7 +48,7 @@ pub async fn scan<P: AsRef<Path>>(pool: &SqlitePool, path: P) -> Result<(), Erro
     let (f1, f2) = found_books.into_iter().tee();
 
     let found_hashes = f1.into_iter().fold(HashSet::new(), |mut set, book| {
-        set.insert(book.hash.clone());
+        set.insert(book.hash);
         set
     });
 
@@ -64,7 +64,7 @@ pub async fn scan<P: AsRef<Path>>(pool: &SqlitePool, path: P) -> Result<(), Erro
     let library_hashes = library_books
         .into_iter()
         .fold(HashSet::new(), |mut set, book| {
-            set.insert(book.hash.clone());
+            set.insert(book.hash);
             set
         });
 

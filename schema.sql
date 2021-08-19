@@ -20,6 +20,7 @@ create table chapters (
     book_id integer not null,
     `index` integer not null,
     content text not null,
+    unique(book_id, `index`)
     foreign key (book_id) references books(id)
 );
 
@@ -29,6 +30,7 @@ create table table_of_contents (
     `index` integer not null,
     chapter_id integer not null,
     title text not null,
+    unique(book_id, `index`)
     foreign key (book_id) references books(id),
     foreign key (chapter_id) references chapters(id)
 );

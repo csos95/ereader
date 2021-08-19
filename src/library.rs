@@ -24,7 +24,7 @@ pub struct Chapter {
 }
 
 #[derive(Clone, Debug)]
-pub struct TOC {
+pub struct Toc {
     pub id: i64,
     pub book_id: i64,
     pub index: i64,
@@ -111,8 +111,37 @@ pub async fn get_books(pool: &SqlitePool) -> Result<Vec<Book>, Error> {
         .await?)
 }
 
-pub async fn get_book(pool: &SqlitePool, id: i64) -> Result<Book, Error> {
-    Ok(query_as!(Book, "select * from books where id = ?", id)
-        .fetch_one(pool)
-        .await?)
+// pub async fn get_book(pool: &SqlitePool, id: i64) -> Result<Book, Error> {
+//     Ok(query_as!(Book, "select * from books where id = ?", id)
+//         .fetch_one(pool)
+//         .await?)
+// }
+
+pub async fn get_chapter(pool: &SqlitePool, book_id: i64, index: i64) -> Result<Chapter, Error> {
+    Ok(query_as!(
+        Chapter,
+        "select * from chapters where book_id = ? and `index` = ?",
+        book_id,
+        index
+    )
+    .fetch_one(pool)
+    .await?)
+}
+
+pub async fn get_chapter_by_id(pool: &SqlitePool, id: i64) -> Result<Chapter, Error> {
+    Ok(
+        query_as!(Chapter, "select * from chapters where id = ?", id)
+            .fetch_one(pool)
+            .await?,
+    )
+}
+
+pub async fn get_toc(pool: &SqlitePool, book_id: i64) -> Result<Vec<Toc>, Error> {
+    Ok(query_as!(
+        Toc,
+        "select * from table_of_contents where book_id = ? order by `index`",
+        book_id,
+    )
+    .fetch_all(pool)
+    .await?)
 }

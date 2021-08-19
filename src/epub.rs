@@ -2,47 +2,47 @@ use crate::Error;
 use cursive::theme::{ColorStyle, Effect, Style};
 use cursive::utils::markup::StyledString;
 use ego_tree::iter::Edge;
-use epub::doc::EpubDoc;
+// use epub::doc::EpubDoc;
 use scraper::{ElementRef, Html, Selector};
-use std::fs::read;
-use std::io::Cursor;
-use std::path::{Path, PathBuf};
+// use std::fs::read;
+// use std::io::Cursor;
+// use std::path::{Path, PathBuf};
 use wasmer_enumset::EnumSet;
 
-pub fn read_epub<P: AsRef<Path>>(path: P) -> Result<EpubDoc<Cursor<Vec<u8>>>, Error> {
-    let buff = read(&path)?;
-    let cursor = Cursor::new(buff);
-    let doc = EpubDoc::from_reader(cursor).map_err(|_| Error::UnableToParseEpub)?;
-
-    Ok(doc)
-}
-
-pub fn toc<P: AsRef<Path>>(path: P) -> Result<Vec<(String, PathBuf)>, Error> {
-    let buff = read(&path)?;
-    let cursor = Cursor::new(buff);
-    let doc = EpubDoc::from_reader(cursor).map_err(|_| Error::UnableToParseEpub)?;
-
-    let toc = doc
-        .toc
-        .iter()
-        .map(|nav| (nav.label.clone(), nav.content.clone()))
-        .collect::<Vec<(String, PathBuf)>>();
-
-    Ok(toc)
-}
-
-pub fn get_chapter_html<P: AsRef<Path>>(path: P, index: usize) -> Result<String, Error> {
-    let buff = read(&path)?;
-    let cursor = Cursor::new(buff);
-    let mut doc = EpubDoc::from_reader(cursor).map_err(|_| Error::UnableToParseEpub)?;
-
-    if index >= doc.spine.len() {
-        return Err(Error::InvalidSpineIndex(index));
-    }
-
-    let id = doc.spine[index].clone();
-    Ok(doc.get_resource_str(&id[..])?)
-}
+// pub fn read_epub<P: AsRef<Path>>(path: P) -> Result<EpubDoc<Cursor<Vec<u8>>>, Error> {
+//     let buff = read(&path)?;
+//     let cursor = Cursor::new(buff);
+//     let doc = EpubDoc::from_reader(cursor).map_err(|_| Error::UnableToParseEpub)?;
+//
+//     Ok(doc)
+// }
+//
+// pub fn toc<P: AsRef<Path>>(path: P) -> Result<Vec<(String, PathBuf)>, Error> {
+//     let buff = read(&path)?;
+//     let cursor = Cursor::new(buff);
+//     let doc = EpubDoc::from_reader(cursor).map_err(|_| Error::UnableToParseEpub)?;
+//
+//     let toc = doc
+//         .toc
+//         .iter()
+//         .map(|nav| (nav.label.clone(), nav.content.clone()))
+//         .collect::<Vec<(String, PathBuf)>>();
+//
+//     Ok(toc)
+// }
+//
+// pub fn get_chapter_html<P: AsRef<Path>>(path: P, index: usize) -> Result<String, Error> {
+//     let buff = read(&path)?;
+//     let cursor = Cursor::new(buff);
+//     let mut doc = EpubDoc::from_reader(cursor).map_err(|_| Error::UnableToParseEpub)?;
+//
+//     if index >= doc.spine.len() {
+//         return Err(Error::InvalidSpineIndex(index));
+//     }
+//
+//     let id = doc.spine[index].clone();
+//     Ok(doc.get_resource_str(&id[..])?)
+// }
 
 // TODO: change this to a function that returns a linear layout so that
 // alignment can be set on the text (such as horizontal lines).
