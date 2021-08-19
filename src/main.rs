@@ -82,11 +82,11 @@ enum Msg {
     NextChapter,
     PrevChapter,
     GoTOC,
+    Scan,
 }
 
 async fn init() -> Result<Model, Error> {
     let pool = SqlitePool::connect("ereader.sqlite").await?;
-    scan::scan(&pool, "epub").await?;
 
     let books = library::get_books(&pool).await?;
 
@@ -137,6 +137,21 @@ fn update(msg: Msg, mut model: Model) -> Result<Model, Error> {
         (Msg::GoChapterId(id), _) => {
             let chapter = task::block_on(async { library::get_chapter_by_id(pool, id).await })?;
             Page::Chapter(chapter)
+        }
+        // Separate cases for library/other page so that scanning can be done at any time
+        // and not necessarily tied to the library page
+        (Msg::Scan, Page::Library(_)) => {
+            let books = task::block_on(async {
+                scan::scan(&pool, "epub").await?;
+                library::get_books(pool).await
+            })?;
+            Page::Library(books)
+        }
+        (Msg::Scan, page) => {
+            task::block_on(async {
+                scan::scan(&pool, "epub").await
+            })?;
+            page
         }
         (_msg, page) => page,
     };
@@ -201,6 +216,7 @@ fn view_library(s: &mut Cursive, books: &[Book]) -> Result<(), Error> {
     s.add_layer(
         Dialog::around(view.scrollable())
             .title("Library")
+            .button("Scan", |s| update_view(s, Msg::Scan))
             .max_width(90),
     );
 

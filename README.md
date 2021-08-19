@@ -19,6 +19,7 @@ Requirements:
 - [x] get the chapters from books and insert those
 - [x] get the table of contents from books and insert those
 - [x] switch the main application over to pulling from the database
+- [x] don't scan at startup, instead have scan button on library page
 - [ ] make illegal states unrepresentable and clean things up 
 - [ ] ignore empty html tags
 - [ ] show something when the table of contents is empty/don't show button
