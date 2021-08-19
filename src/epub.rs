@@ -112,7 +112,7 @@ pub fn html_to_styled_string(selector: &str, html: &str) -> Result<StyledString,
                     el if el.is_element() => {
                         let el = el.as_element().unwrap();
                         let local_name = el.name.local.to_string();
-                        if local_name == "i" || local_name == "em" {
+                        if local_name == "i" || local_name == "em" || local_name == "b" || local_name == "strong" {
                             modes.pop();
                         } else if local_name == "p" || local_name == "div" {
                             styled_string.append_plain("\n");
