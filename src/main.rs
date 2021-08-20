@@ -1,9 +1,6 @@
-mod epub;
 mod library;
 mod scan;
 
-use crate::epub::html_to_styled_string;
-// use ::epub::doc::EpubDoc;
 use async_std::task;
 use cursive::traits::Scrollable;
 use cursive::view::Resizable;
@@ -218,9 +215,16 @@ fn view_library(s: &mut Cursive, books: &[Book]) {
 }
 
 fn view_chapter(s: &mut Cursive, chapter: &Chapter) {
-    let styled_text = html_to_styled_string("body", &chapter.content[..]).unwrap_or_default();
+    let html = chapter.content
+        .replace("<i>", "<em>")
+        .replace("</i>", "</em>")
+        .replace("<b>", "<strong>")
+        .replace("</b>", "</strong>");
+    let mut view = cursive_markup::MarkupView::html(&html[..]);
+    view.on_link_focus(|_s, _url| {});
+    view.on_link_select(|_s, _url| {});
 
-    let mut dialog = Dialog::around(TextView::new(styled_text).scrollable());
+    let mut dialog = Dialog::around(view.scrollable());
 
     // if chapter.index + 1 < chapter.epub.get_num_pages() {
     dialog.add_button("Next", move |s| {
