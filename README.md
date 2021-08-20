@@ -22,7 +22,7 @@ Requirements:
 - [x] don't scan at startup, instead have scan button on library page
 - [x] show something when the table of contents is empty/don't show button
 - [ ] make illegal states unrepresentable and clean things up 
-- [ ] ignore empty html tags
+- [x] ignore empty html tags (switched to cursive-markup-rs)
 
 ## Features Todo
 - book
@@ -44,7 +44,7 @@ Requirements:
     - [x] display in scroll view
     - [x] prev/next chapter
     - [x] table of contents
-    - [ ] ignore empty paragraph html tags (or all empty html tags?)
+    - [x] ignore empty paragraph html tags (or all empty html tags?)
     - [x] show something when there is no table of contents or just don't add button?
     - [ ] bookmark
 - bookmark
