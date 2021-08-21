@@ -24,6 +24,7 @@ Requirements:
 - [x] ignore empty html tags (switched to cursive-markup-rs)
 - [x] test compressing chapter contents
 - [x] add bookmarks that point to a chapter and progress percent
+- [ ] the scroll position seems to be 3 off from where the bookmark was created. Figure out if it's an issue with the creation position or scroll position.
 - [ ] show book title on bookmark
 - [ ] clean up the mess from adding bookmarks
 - [ ] add delete bookmark button
