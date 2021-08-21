@@ -5,7 +5,7 @@ use async_std::task;
 use cursive::traits::Scrollable;
 use cursive::view::{Nameable, Resizable};
 use cursive::views::{Dialog, SelectView, TextView};
-use cursive::{Cursive, CursiveExt};
+use cursive::{Cursive, CursiveExt, View, XY};
 use library::{Book, Bookmark, Chapter, Toc};
 use sqlx::SqlitePool;
 use thiserror::Error;
