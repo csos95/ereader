@@ -21,8 +21,25 @@ Requirements:
 - [x] switch the main application over to pulling from the database
 - [x] don't scan at startup, instead have scan button on library page
 - [x] show something when the table of contents is empty/don't show button
-- [ ] make illegal states unrepresentable and clean things up 
 - [x] ignore empty html tags (switched to cursive-markup-rs)
+- [x] test compressing chapter contents
+- [ ] test dictionary trainging for compression
+    training on all books would probably take too long, but try it anyways
+    will probably want to do something like train on the first n chapters of content
+- [ ] make scanning faster
+    Right now the scanning reads all books, hashes, parses, and then inserts them.
+    If I switch to async io functions I might be able to use an iterator/generator to read, hash, parse, and insert books as a stream.
+    This might improve scan time because it could do processing while waiting for io and it could reduce memory usage since it won't have to hold the data for all books.
+    I think I'd want to
+    - get books from library
+    - put the hashes in a hashset
+    - traverse the epub directory
+    - `map` the paths to (hash, buffer)
+    - `filter` the out ones that are in the hashset
+    - `map` the remaining ones to SourceBook
+    - `for_each` to insert each
+    Doing it this way, it should be a stream and not take up as much memory.
+- [ ] make illegal states unrepresentable and clean things up 
 
 ## Features Todo
 - book

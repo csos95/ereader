@@ -19,7 +19,7 @@ create table chapters (
     id integer not null primary key autoincrement,
     book_id integer not null,
     `index` integer not null,
-    content text not null,
+    content blob not null,
     unique(book_id, `index`)
     foreign key (book_id) references books(id)
 );

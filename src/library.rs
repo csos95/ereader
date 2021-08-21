@@ -20,7 +20,7 @@ pub struct Chapter {
     pub id: i64,
     pub book_id: i64,
     pub index: i64,
-    pub content: String,
+    pub content: Vec<u8>,
 }
 
 #[derive(Clone, Debug)]
@@ -69,11 +69,12 @@ pub async fn insert_chapter(
     book_id: i64,
     chapter: &SourceChapter,
 ) -> Result<(), sqlx::Error> {
+    let content = zstd::stream::encode_all(chapter.content.as_bytes(), 8).unwrap();
     query!(
         "insert into chapters(book_id, `index`, content) values (?, ?, ?)",
         book_id,
         chapter.index,
-        chapter.content
+        content
     )
     .execute(tx)
     .await?;

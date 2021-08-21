@@ -215,7 +215,10 @@ fn view_library(s: &mut Cursive, books: &[Book]) {
 }
 
 fn view_chapter(s: &mut Cursive, chapter: &Chapter) {
-    let mut view = cursive_markup::MarkupView::html(&chapter.content[..]);
+    let cursor = std::io::Cursor::new(chapter.content.clone());
+    let content = zstd::stream::decode_all(cursor).unwrap();
+    let content_str = String::from_utf8(content).unwrap();
+    let mut view = cursive_markup::MarkupView::html(&content_str[..]);
     view.on_link_focus(|_s, _url| {});
     view.on_link_select(|_s, _url| {});
 
