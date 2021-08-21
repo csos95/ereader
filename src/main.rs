@@ -215,12 +215,7 @@ fn view_library(s: &mut Cursive, books: &[Book]) {
 }
 
 fn view_chapter(s: &mut Cursive, chapter: &Chapter) {
-    let html = chapter.content
-        .replace("<i>", "<em>")
-        .replace("</i>", "</em>")
-        .replace("<b>", "<strong>")
-        .replace("</b>", "</strong>");
-    let mut view = cursive_markup::MarkupView::html(&html[..]);
+    let mut view = cursive_markup::MarkupView::html(&chapter.content[..]);
     view.on_link_focus(|_s, _url| {});
     view.on_link_select(|_s, _url| {});
 

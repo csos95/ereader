@@ -516,8 +516,7 @@ dependencies = [
 [[package]]
 name = "cursive-markup"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3633622df2b1f11fb6ce1c73f4e57a501e45e1690760fd5fe83607faeb46ce7f"
+source = "git+https://github.com/csos95/cursive-markup-rs.git#0a58e27e347ddb470c46637bdee4656b9c68fe02"
 dependencies = [
  "cursive_core",
  "html2text",
@@ -969,8 +968,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 [[package]]
 name = "html2text"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a26379dcb715e237b96102a12b505c553e2bffa74bae2e54658748d298660ef1"
+source = "git+https://github.com/csos95/rust-html2text.git#4c48d840920cb4a8c7b6ed3b36d4526e89ae196f"
 dependencies = [
  "html5ever",
  "markup5ever_rcdom",
