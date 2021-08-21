@@ -1,5 +1,6 @@
 use crate::scan::{SourceBook, SourceChapter, SourceTOC};
 use crate::Error;
+use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
 use sqlx::{query, query_as};
 
@@ -30,6 +31,24 @@ pub struct Toc {
     pub index: i64,
     pub chapter_id: i64,
     pub title: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct Bookmark {
+    pub id: i64,
+    pub book_id: i64,
+    pub chapter_id: i64,
+    pub progress: f32,
+    pub created: DateTime<Utc>,
+}
+
+pub async fn insert_bookmark(pool: &SqlitePool, bookmark: &Bookmark) -> Result<(), Error> {
+    query!("insert or replace into bookmarks(book_id, chapter_id, progress, created) values (?, ?, ?, ?)",
+    bookmark.book_id, bookmark.chapter_id, bookmark.progress, bookmark.created)
+        .execute(pool)
+        .await?;
+
+    Ok(())
 }
 
 pub async fn insert_book(pool: &SqlitePool, book: &SourceBook) -> Result<(), sqlx::Error> {
@@ -147,3 +166,10 @@ pub async fn get_toc(pool: &SqlitePool, book_id: i64) -> Result<Vec<Toc>, Error>
     .fetch_all(pool)
     .await?)
 }
+
+pub async fn get_bookmarks(pool: &SqlitePool) -> Result<Vec<Bookmark>, Error> {
+    Ok(query_as!(Bookmark, "select id, book_id, chapter_id, progress, created as \"created: DateTime<Utc>\" from bookmarks order by created desc")
+       .fetch_all(pool)
+       .await?)
+}
+

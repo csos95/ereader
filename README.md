@@ -23,6 +23,10 @@ Requirements:
 - [x] show something when the table of contents is empty/don't show button
 - [x] ignore empty html tags (switched to cursive-markup-rs)
 - [x] test compressing chapter contents
+- [x] add bookmarks that point to a chapter and progress percent
+- [ ] show book title on bookmark
+- [ ] clean up the mess from adding bookmarks
+- [ ] add delete bookmark button
 - [ ] test dictionary trainging for compression
     training on all books would probably take too long, but try it anyways
     will probably want to do something like train on the first n chapters of content
@@ -63,10 +67,10 @@ Requirements:
     - [x] table of contents
     - [x] ignore empty paragraph html tags (or all empty html tags?)
     - [x] show something when there is no table of contents or just don't add button?
-    - [ ] bookmark
+    - [x] bookmark
 - bookmark
-    - [ ] list
-    - [ ] select to go to chapter/location in book
+    - [x] list
+    - [x] select to go to chapter/location in book
     - [ ] delete
 - fimfarchive (first two should mostly be copy from old project)
     - [ ] get author, tag, story, and story_tag from index.json

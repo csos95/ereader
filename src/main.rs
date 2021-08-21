@@ -3,10 +3,10 @@ mod scan;
 
 use async_std::task;
 use cursive::traits::Scrollable;
-use cursive::view::Resizable;
+use cursive::view::{Nameable, Resizable};
 use cursive::views::{Dialog, SelectView, TextView};
 use cursive::{Cursive, CursiveExt};
-use library::{Book, Chapter, Toc};
+use library::{Book, Bookmark, Chapter, Toc};
 use sqlx::SqlitePool;
 use thiserror::Error;
 
@@ -30,6 +30,8 @@ pub enum Error {
     UnableToFindSelector(String),
     #[error("io error {0}")]
     IOError(std::io::Error),
+    #[error("debug message {0}")]
+    DebugMsg(String),
 }
 
 impl From<sqlx::Error> for Error {
@@ -59,18 +61,22 @@ struct Model {
 #[derive(Clone, Debug)]
 enum Page {
     Library(Vec<Book>),
-    Chapter(Chapter),
+    Chapter(Chapter, Option<f32>),
     TableOfContents(Vec<Toc>, i64),
+    Bookmarks(Vec<Bookmark>),
 }
 
 enum Msg {
     GoLibrary,
     GoChapterIndex(i64, i64),
     GoChapterId(i64),
+    GoChapterIdBookmark(i64, f32),
     NextChapter,
     PrevChapter,
     GoTOC,
     Scan,
+    GoBookmarks,
+    SetBookmark(i64, i64, f32),
 }
 
 async fn init() -> Result<Model, Error> {
@@ -111,27 +117,27 @@ fn update(msg: Msg, mut model: Model) -> Result<Model, Error> {
         (Msg::GoChapterIndex(book_id, index), _) => {
             let chapter =
                 task::block_on(async { library::get_chapter(pool, book_id, index).await })?;
-            Page::Chapter(chapter)
+            Page::Chapter(chapter, None)
         }
-        (Msg::NextChapter, Page::Chapter(chapter)) => {
+        (Msg::NextChapter, Page::Chapter(chapter, _)) => {
             let chapter = task::block_on(async {
                 library::get_chapter(pool, chapter.book_id, chapter.index + 1).await
             })?;
-            Page::Chapter(chapter)
+            Page::Chapter(chapter, None)
         }
-        (Msg::PrevChapter, Page::Chapter(chapter)) => {
+        (Msg::PrevChapter, Page::Chapter(chapter, _)) => {
             let chapter = task::block_on(async {
                 library::get_chapter(pool, chapter.book_id, chapter.index - 1).await
             })?;
-            Page::Chapter(chapter)
+            Page::Chapter(chapter, None)
         }
-        (Msg::GoTOC, Page::Chapter(chapter)) => {
+        (Msg::GoTOC, Page::Chapter(chapter, _)) => {
             let toc = task::block_on(async { library::get_toc(pool, chapter.book_id).await })?;
             Page::TableOfContents(toc, chapter.book_id)
         }
         (Msg::GoChapterId(id), _) => {
             let chapter = task::block_on(async { library::get_chapter_by_id(pool, id).await })?;
-            Page::Chapter(chapter)
+            Page::Chapter(chapter, None)
         }
         // Separate cases for library/other page so that scanning can be done at any time
         // and not necessarily tied to the library page
@@ -148,6 +154,28 @@ fn update(msg: Msg, mut model: Model) -> Result<Model, Error> {
             })?;
             page
         }
+        (Msg::GoBookmarks, _) => {
+            let bookmarks = task::block_on(async {
+                library::get_bookmarks(pool).await
+            })?;
+            Page::Bookmarks(bookmarks)
+        }
+        (Msg::SetBookmark(book_id, chapter_id, progress), Page::Chapter(chapter, _)) => {
+            task::block_on(async {
+                library::insert_bookmark(pool, &library::Bookmark {
+                    id: 0,
+                    book_id,
+                    chapter_id,
+                    progress,
+                    created: chrono::Utc::now(),
+                }).await
+            })?;
+            Page::Chapter(chapter, Some(progress))
+        }
+        (Msg::GoChapterIdBookmark(id, progress), _) => {
+            let chapter = task::block_on(async { library::get_chapter_by_id(pool, id).await })?;
+            Page::Chapter(chapter, Some(progress))
+        }
         (_msg, page) => page,
     };
 
@@ -156,9 +184,10 @@ fn update(msg: Msg, mut model: Model) -> Result<Model, Error> {
 
 fn view(s: &mut Cursive, model: &Model) {
     match &model.page {
-        Page::Chapter(chapter) => view_chapter(s, chapter),
+        Page::Chapter(chapter, progress) => view_chapter(s, chapter, *progress),
         Page::Library(books) => view_library(s, books),
         Page::TableOfContents(toc, book_id) => view_toc(s, toc, *book_id),
+        Page::Bookmarks(bookmarks) => view_bookmarks(s, bookmarks),
     }
 }
 
@@ -209,12 +238,13 @@ fn view_library(s: &mut Cursive, books: &[Book]) {
     s.add_layer(
         Dialog::around(view.scrollable())
             .title("Library")
+            .button("Bookmarks", |s| update_view(s, Msg::GoBookmarks))
             .button("Scan", |s| update_view(s, Msg::Scan))
             .max_width(90),
     );
 }
 
-fn view_chapter(s: &mut Cursive, chapter: &Chapter) {
+fn view_chapter(s: &mut Cursive, chapter: &Chapter, progress: Option<f32>) {
     let cursor = std::io::Cursor::new(chapter.content.clone());
     let content = zstd::stream::decode_all(cursor).unwrap();
     let content_str = String::from_utf8(content).unwrap();
@@ -222,7 +252,16 @@ fn view_chapter(s: &mut Cursive, chapter: &Chapter) {
     view.on_link_focus(|_s, _url| {});
     view.on_link_select(|_s, _url| {});
 
-    let mut dialog = Dialog::around(view.scrollable());
+    let mut scrollable = view.scrollable();
+    if let Some(progress) = progress {
+        scrollable.layout(XY::new(84, 65));
+    
+        let size = scrollable.inner_size();
+        let offset_y = (size.y as f32 * progress).round() as usize;
+        scrollable.set_offset(cursive::XY::new(0, offset_y));
+    }
+
+    let mut dialog = Dialog::around(scrollable.with_name("reader"));
 
     // if chapter.index + 1 < chapter.epub.get_num_pages() {
     dialog.add_button("Next", move |s| {
@@ -243,6 +282,18 @@ fn view_chapter(s: &mut Cursive, chapter: &Chapter) {
     dialog.add_button("TOC", move |s| {
         s.cb_sink()
             .send(Box::new(move |s| update_view(s, Msg::GoTOC)))
+            .unwrap();
+    });
+
+    let b_id = chapter.book_id;
+    let c_id = chapter.id;
+    dialog.add_button("Bookmark", move |s| {
+        let (viewport, size) = s.call_on_name("reader", |view: &mut cursive::views::ScrollView<cursive_markup::MarkupView<cursive_markup::html::RichRenderer>>| {
+            (view.content_viewport(), view.inner_size())
+        }).unwrap();
+        let progress = viewport.top() as f32 / size.y as f32;
+        s.cb_sink()
+            .send(Box::new(move |s| update_view(s, Msg::SetBookmark(b_id, c_id, progress))))
             .unwrap();
     });
 
@@ -274,6 +325,36 @@ fn view_toc(s: &mut Cursive, toc: &[Toc], book_id: i64) {
     s.add_layer(
         Dialog::around(view.scrollable())
             .title("Table of Contents")
+            .max_width(90),
+    );
+}
+
+fn view_bookmarks(s: &mut Cursive, bookmarks: &[Bookmark]) {
+    let mut view = SelectView::new();
+
+    for bookmark in bookmarks {
+        view.add_item(bookmark.created.to_string(), (bookmark.chapter_id, bookmark.progress));
+    }
+
+    if bookmarks.is_empty() {
+        view.add_item("No bookmarks. Go to library.".to_string(), (0, 0.0));
+    }
+
+    view.set_on_submit(move |s, (id, progress)| {
+        let c_id = *id;
+        let c_progress = *progress;
+        s.cb_sink()
+            .send(Box::new(move |s| if c_id == 0 {
+                update_view(s, Msg::GoLibrary);
+            } else {
+                update_view(s, Msg::GoChapterIdBookmark(c_id, c_progress));
+            }))
+            .unwrap();
+    });
+
+    s.add_layer(
+        Dialog::around(view.scrollable())
+            .title("Bookmarks")
             .max_width(90),
     );
 }
