@@ -306,7 +306,6 @@ fn view_chapter(s: &mut Cursive, chapter: &Chapter, progress: Option<f32>) {
             (view.content_viewport(), view.inner_size())
         }).unwrap();
         let progress = viewport.top() as f32 / size.y as f32;
-        log(format!("save bookmark {:?} {:?} {} {} {}", viewport, size, progress, b_id, c_id));
         s.cb_sink()
             .send(Box::new(move |s| update_view(s, Msg::SetBookmark(b_id, c_id, progress))))
             .unwrap();
