@@ -389,13 +389,10 @@ fn view_bookmarks(s: &mut Cursive, bookmarks: &[Bookmark], books: &[Book]) {
     let mut dialog = Dialog::around(view.with_name("bookmarks").scrollable());
 
     dialog.add_button("Delete", move |s| {
-        log("deleting bookmark".into());
         let bookmark = s.call_on_name("bookmarks", |view: &mut SelectView<(i64, f32)>| {
-            log(format!("{:?}", view.selection()));
             view.selection().unwrap()
         }).unwrap();
         let id = bookmark.0;
-        log(format!("{}", id));
         s.cb_sink()
             .send(Box::new(move |s| update_view(s, Msg::DeleteBookmark(id))))
             .unwrap();
