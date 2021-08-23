@@ -24,7 +24,9 @@ Requirements:
 - [x] ignore empty html tags (switched to cursive-markup-rs)
 - [x] test compressing chapter contents
 - [x] add bookmarks that point to a chapter and progress percent
-- [ ] the scroll position seems to be 3 off from where the bookmark was created. Figure out if it's an issue with the creation position or scroll position.
+- [x] the scroll position seems to be 3 off from where the bookmark was created. Figure out if it's an issue with the creation position or scroll position.
+    The width being used for setting the scroll position was two less than the actual width.
+    Fixed by changing width of 84 to `min(s.screen_size().x, 86)`.
 - [ ] show book title on bookmark
 - [ ] clean up the mess from adding bookmarks
 - [ ] add delete bookmark button

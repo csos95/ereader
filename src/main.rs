@@ -246,6 +246,17 @@ fn view_library(s: &mut Cursive, books: &[Book]) {
     );
 }
 
+fn log(message: String) {
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .append(true)
+        .open("debug.log")
+        .unwrap();
+
+    use std::io::Write;
+    writeln!(file, "{}", message).unwrap()
+}
+
 fn view_chapter(s: &mut Cursive, chapter: &Chapter, progress: Option<f32>) {
     let cursor = std::io::Cursor::new(chapter.content.clone());
     let content = zstd::stream::decode_all(cursor).unwrap();
@@ -256,7 +267,8 @@ fn view_chapter(s: &mut Cursive, chapter: &Chapter, progress: Option<f32>) {
 
     let mut scrollable = view.scrollable();
     if let Some(progress) = progress {
-        scrollable.layout(XY::new(84, 65));
+        let x = std::cmp::min(s.screen_size().x - 6, 86);
+        scrollable.layout(XY::new(x, 65));
     
         let size = scrollable.inner_size();
         let offset_y = (size.y as f32 * progress).round() as usize;
@@ -294,6 +306,7 @@ fn view_chapter(s: &mut Cursive, chapter: &Chapter, progress: Option<f32>) {
             (view.content_viewport(), view.inner_size())
         }).unwrap();
         let progress = viewport.top() as f32 / size.y as f32;
+        log(format!("save bookmark {:?} {:?} {} {} {}", viewport, size, progress, b_id, c_id));
         s.cb_sink()
             .send(Box::new(move |s| update_view(s, Msg::SetBookmark(b_id, c_id, progress))))
             .unwrap();
