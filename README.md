@@ -28,6 +28,7 @@ Requirements:
 - [ ] show book title on bookmark
 - [ ] clean up the mess from adding bookmarks
 - [ ] add delete bookmark button
+- [ ] benchmark the speed/storage size of different zstd levels.
 - [ ] test dictionary trainging for compression
     training on all books would probably take too long, but try it anyways
     will probably want to do something like train on the first n chapters of content
@@ -57,6 +58,30 @@ Requirements:
             for found books not in library, add to library
             for library books not found, display errors
             for found books in library, check that the paths match, if they do not, update the path in the library
+    - [ ] full text search
+        Trying to do full text search on all of fimfarchive didn't work out because of how large it is.
+        It took up about 19GB and searching it was unusably slow.
+	The library of a user would be *much* smaller so the storage space and speed would be less likely to be an issue.
+	There are essentially two main options for what to use for this searching.
+	1. Sqlite3 FTS5
+	    Pros:
+	    - uses the existing database that stores the books
+	    Cons:
+	    - more storage space
+	    - slower
+	2. Tantivy
+	    Pros:
+	    - less storage space
+	    - faster
+	    Cons:
+	    - adds an extra file
+	    - need to keep two systems in sync when adding books to the library
+	I think that the overhead of implementing both would be similar so I may do both and see which works best.
+	I could have a trait that defines the insert/query interface and implement it for sqlite and tantivy.
+	Then I could test it out with my calibre library.
+	If both work pretty similarly, I could test it out on all of fimfarchive and see if either one handles it well.
+	I'm pretty certain sqlite will not, but maybe tantivy could.
+	[Sqlite3 FTS5](https://www.sqlite.org/fts5.html) [Tantivy query syntax](https://docs.rs/tantivy/0.15.3/tantivy/query/struct.QueryParser.html)
 - library
     - [x] list books in library
     - [x] select book
