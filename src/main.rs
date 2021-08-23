@@ -4,8 +4,10 @@ mod scan;
 use async_std::task;
 use cursive::traits::Scrollable;
 use cursive::view::{Nameable, Resizable};
-use cursive::views::{Dialog, SelectView, TextView};
+use cursive::views::{Dialog, SelectView, TextView, ScrollView};
 use cursive::{Cursive, CursiveExt, View, XY};
+use cursive_markup::MarkupView;
+use cursive_markup::html::RichRenderer;
 use library::{Book, Bookmark, Chapter, Toc};
 use sqlx::SqlitePool;
 use thiserror::Error;
@@ -248,7 +250,7 @@ fn view_chapter(s: &mut Cursive, chapter: &Chapter, progress: Option<f32>) {
     let cursor = std::io::Cursor::new(chapter.content.clone());
     let content = zstd::stream::decode_all(cursor).unwrap();
     let content_str = String::from_utf8(content).unwrap();
-    let mut view = cursive_markup::MarkupView::html(&content_str[..]);
+    let mut view = MarkupView::html(&content_str[..]);
     view.on_link_focus(|_s, _url| {});
     view.on_link_select(|_s, _url| {});
 
@@ -258,7 +260,7 @@ fn view_chapter(s: &mut Cursive, chapter: &Chapter, progress: Option<f32>) {
     
         let size = scrollable.inner_size();
         let offset_y = (size.y as f32 * progress).round() as usize;
-        scrollable.set_offset(cursive::XY::new(0, offset_y));
+        scrollable.set_offset(XY::new(0, offset_y));
     }
 
     let mut dialog = Dialog::around(scrollable.with_name("reader"));
@@ -288,7 +290,7 @@ fn view_chapter(s: &mut Cursive, chapter: &Chapter, progress: Option<f32>) {
     let b_id = chapter.book_id;
     let c_id = chapter.id;
     dialog.add_button("Bookmark", move |s| {
-        let (viewport, size) = s.call_on_name("reader", |view: &mut cursive::views::ScrollView<cursive_markup::MarkupView<cursive_markup::html::RichRenderer>>| {
+        let (viewport, size) = s.call_on_name("reader", |view: &mut ScrollView<MarkupView<RichRenderer>>| {
             (view.content_viewport(), view.inner_size())
         }).unwrap();
         let progress = viewport.top() as f32 / size.y as f32;
