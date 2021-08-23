@@ -132,11 +132,11 @@ pub async fn get_books(pool: &SqlitePool) -> Result<Vec<Book>, Error> {
         .await?)
 }
 
-// pub async fn get_book(pool: &SqlitePool, id: i64) -> Result<Book, Error> {
-//     Ok(query_as!(Book, "select * from books where id = ?", id)
-//         .fetch_one(pool)
-//         .await?)
-// }
+pub async fn get_book(pool: &SqlitePool, id: i64) -> Result<Book, Error> {
+    Ok(query_as!(Book, "select * from books where id = ?", id)
+        .fetch_one(pool)
+        .await?)
+}
 
 pub async fn get_chapter(pool: &SqlitePool, book_id: i64, index: i64) -> Result<Chapter, Error> {
     Ok(query_as!(
@@ -171,5 +171,12 @@ pub async fn get_bookmarks(pool: &SqlitePool) -> Result<Vec<Bookmark>, Error> {
     Ok(query_as!(Bookmark, "select id, book_id, chapter_id, progress, created as \"created: DateTime<Utc>\" from bookmarks order by created desc")
        .fetch_all(pool)
        .await?)
+}
+
+pub async fn delete_bookmark(pool: &SqlitePool, chapter_id: i64) -> Result<(), Error> {
+    query!("delete from bookmarks where chapter_id = ?", chapter_id)
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 

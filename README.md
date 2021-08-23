@@ -27,9 +27,10 @@ Requirements:
 - [x] the scroll position seems to be 3 off from where the bookmark was created. Figure out if it's an issue with the creation position or scroll position.
     The width being used for setting the scroll position was two less than the actual width.
     Fixed by changing width of 84 to `min(s.screen_size().x, 86)`.
-- [ ] show book title on bookmark
+    Also happens when near the bottom, so need to check the screen size y against a known value.
+- [x] show book title on bookmark
 - [ ] clean up the mess from adding bookmarks
-- [ ] add delete bookmark button
+- [x] add delete bookmark button
 - [ ] benchmark the speed/storage size of different zstd levels.
 - [ ] test dictionary trainging for compression
     training on all books would probably take too long, but try it anyways
@@ -99,7 +100,7 @@ Requirements:
 - bookmark
     - [x] list
     - [x] select to go to chapter/location in book
-    - [ ] delete
+    - [x] delete
 - fimfarchive (first two should mostly be copy from old project)
     - [ ] get author, tag, story, and story_tag from index.json
     - [ ] search for fics

@@ -65,7 +65,7 @@ enum Page {
     Library(Vec<Book>),
     Chapter(Chapter, Option<f32>),
     TableOfContents(Vec<Toc>, i64),
-    Bookmarks(Vec<Bookmark>),
+    Bookmarks(Vec<Bookmark>, Vec<Book>),
 }
 
 enum Msg {
@@ -78,6 +78,7 @@ enum Msg {
     GoTOC,
     Scan,
     GoBookmarks,
+    DeleteBookmark(i64),
     SetBookmark(i64, i64, f32),
 }
 
@@ -157,10 +158,16 @@ fn update(msg: Msg, mut model: Model) -> Result<Model, Error> {
             page
         }
         (Msg::GoBookmarks, _) => {
-            let bookmarks = task::block_on(async {
-                library::get_bookmarks(pool).await
+            let (bookmarks, books) = task::block_on(async {
+                let bookmarks = library::get_bookmarks(pool).await?;
+                let mut books = Vec::new();
+                for bookmark in &bookmarks {
+                    let book = library::get_book(pool, bookmark.book_id).await?;
+                    books.push(book);
+                }
+                Result::<(Vec<Bookmark>, Vec<Book>), Error>::Ok((bookmarks, books))
             })?;
-            Page::Bookmarks(bookmarks)
+            Page::Bookmarks(bookmarks, books)
         }
         (Msg::SetBookmark(book_id, chapter_id, progress), Page::Chapter(chapter, _)) => {
             task::block_on(async {
@@ -173,6 +180,19 @@ fn update(msg: Msg, mut model: Model) -> Result<Model, Error> {
                 }).await
             })?;
             Page::Chapter(chapter, Some(progress))
+        }
+        (Msg::DeleteBookmark(chapter_id), Page::Bookmarks(_, _)) => {
+            let (bookmarks, books) = task::block_on(async {
+                library::delete_bookmark(pool, chapter_id).await?;
+                let bookmarks = library::get_bookmarks(pool).await?;
+                let mut books = Vec::new();
+                for bookmark in &bookmarks {
+                    let book = library::get_book(pool, bookmark.book_id).await?;
+                    books.push(book);
+                }
+                Result::<(Vec<Bookmark>, Vec<Book>), Error>::Ok((bookmarks, books))
+            })?;
+            Page::Bookmarks(bookmarks, books)
         }
         (Msg::GoChapterIdBookmark(id, progress), _) => {
             let chapter = task::block_on(async { library::get_chapter_by_id(pool, id).await })?;
@@ -189,7 +209,7 @@ fn view(s: &mut Cursive, model: &Model) {
         Page::Chapter(chapter, progress) => view_chapter(s, chapter, *progress),
         Page::Library(books) => view_library(s, books),
         Page::TableOfContents(toc, book_id) => view_toc(s, toc, *book_id),
-        Page::Bookmarks(bookmarks) => view_bookmarks(s, bookmarks),
+        Page::Bookmarks(bookmarks, books) => view_bookmarks(s, bookmarks, books),
     }
 }
 
@@ -343,11 +363,11 @@ fn view_toc(s: &mut Cursive, toc: &[Toc], book_id: i64) {
     );
 }
 
-fn view_bookmarks(s: &mut Cursive, bookmarks: &[Bookmark]) {
-    let mut view = SelectView::new();
+fn view_bookmarks(s: &mut Cursive, bookmarks: &[Bookmark], books: &[Book]) {
+    let mut view: SelectView<(i64, f32)> = SelectView::new();
 
-    for bookmark in bookmarks {
-        view.add_item(bookmark.created.to_string(), (bookmark.chapter_id, bookmark.progress));
+    for i in 0..bookmarks.len() {
+        view.add_item(format!("{}", books[i].title), (bookmarks[i].chapter_id, bookmarks[i].progress));
     }
 
     if bookmarks.is_empty() {
@@ -366,9 +386,20 @@ fn view_bookmarks(s: &mut Cursive, bookmarks: &[Bookmark]) {
             .unwrap();
     });
 
-    s.add_layer(
-        Dialog::around(view.scrollable())
-            .title("Bookmarks")
-            .max_width(90),
-    );
+    let mut dialog = Dialog::around(view.with_name("bookmarks").scrollable());
+
+    dialog.add_button("Delete", move |s| {
+        log("deleting bookmark".into());
+        let bookmark = s.call_on_name("bookmarks", |view: &mut SelectView<(i64, f32)>| {
+            log(format!("{:?}", view.selection()));
+            view.selection().unwrap()
+        }).unwrap();
+        let id = bookmark.0;
+        log(format!("{}", id));
+        s.cb_sink()
+            .send(Box::new(move |s| update_view(s, Msg::DeleteBookmark(id))))
+            .unwrap();
+    });
+
+    s.add_layer(dialog.title("Bookmarks").max_width(90),);
 }
