@@ -76,14 +76,45 @@ fn hash(buff: Vec<u8>) -> (String, Vec<u8>) {
     (hash, buff)
 }
 
-async fn hash_directory<P: AsRef<Path>>(path: P) {
+fn process_epub(hash: String, buff: Vec<u8>) -> Book {
+    let mut doc = epub::doc::EpubDoc::from_reader(std::io::Cursor::new(buff))
+        .unwrap();
+
+    Book {
+        id: 1,
+        identifier: get_metadata(&doc, "identifier"),
+        language: get_metadata(&doc, "language"),
+        title: get_metadata(&doc, "title"),
+        creator: doc.mdata("creator"),
+        description: doc.mdata("description"),
+        publisher: doc.mdata("publisher"),
+        hash,
+    }
+}
+
+type Epub = epub::doc::EpubDoc<std::io::Cursor<Vec<u8>>>;
+
+fn get_metadata(doc: &Epub, tag: &str) -> String {
+    doc.mdata(tag).unwrap()
+}
+
+async fn scan<P: AsRef<Path>>(pool: &SqlitePool, path: P) {
     stream::iter(entries(path))
         .map(|e| async move { get_file(e.path()).await })
         // buffering a few so there isn't a delay in reads
         .buffered(4)
         .map(|f| hash(f))
-        .for_each(|(hash, _buff)| {
-            println!("{}", hash);
+        .map(|(hash, buff)| process_epub(hash, buff))
+        .then(|book| async {
+            library::insert_book_temp(pool, &book).await.unwrap();
+            book
+        })
+        .for_each(|book| {
+            //println!("{}", hash);
+            //let book = process_epub(hash, buff);
+            println!("{:?}", book);
+            // then do insert_book
+
             futures::future::ready(())
         })
         .await
@@ -91,10 +122,12 @@ async fn hash_directory<P: AsRef<Path>>(path: P) {
 
 #[async_std::main]
 async fn main() {
+    let pool = SqlitePool::connect("ereader.sqlite").await.unwrap();
     let start = chrono::Utc::now();
-    let hashes = hash_directory("epub").await;
+    let hashes = scan(&pool, "epub").await;
     let end = chrono::Utc::now();
     println!("start {}\nend {}\ndiff {}", start, end, end - start);
+    pool.close().await;
 
 
 //    let mut siv = Cursive::new();
