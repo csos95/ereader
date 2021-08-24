@@ -105,18 +105,23 @@ async fn scan<P: AsRef<Path>>(pool: &SqlitePool, path: P) {
         .buffered(4)
         .map(|f| hash(f))
         .map(|(hash, buff)| process_epub(hash, buff))
-        .then(|book| async {
-            library::insert_book_temp(pool, &book).await.unwrap();
-            book
+        .chunks(256)
+        .then(|books| async move {
+            let mut tx = pool.begin().await.unwrap();
+            for book in books {
+                library::insert_book_temp(&mut tx, &book).await.unwrap();
+            }
+            tx.commit().await.unwrap();
         })
-        .for_each(|book| {
-            //println!("{}", hash);
-            //let book = process_epub(hash, buff);
-            println!("{:?}", book);
-            // then do insert_book
-
-            futures::future::ready(())
-        })
+        .collect()
+//        .for_each(|book| {
+//            //println!("{}", hash);
+//            //let book = process_epub(hash, buff);
+//            println!("{:?}", book);
+//            // then do insert_book
+//
+//            futures::future::ready(())
+//        })
         .await
 }
 

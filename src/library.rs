@@ -51,10 +51,13 @@ pub async fn insert_bookmark(pool: &SqlitePool, bookmark: &Bookmark) -> Result<(
     Ok(())
 }
 
-pub async fn insert_book_temp(pool: &SqlitePool, book: &Book) -> Result<(), Error> {
+pub async fn insert_book_temp(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    book: &Book
+) -> Result<(), Error> {
     query!("insert into books(identifier, language, title, creator, description, publisher, hash) values (?, ?, ?, ?, ?, ?, ?)",
     book.identifier, book.language, book.title, book.creator, book.description, book.publisher, book.hash)
-        .execute(pool)
+        .execute(tx)
         .await?;
     Ok(())
 }
