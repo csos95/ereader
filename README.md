@@ -24,30 +24,32 @@ Requirements:
 - [x] ignore empty html tags (switched to cursive-markup-rs)
 - [x] test compressing chapter contents
 - [x] add bookmarks that point to a chapter and progress percent
-- [x] the scroll position seems to be 3 off from where the bookmark was created. Figure out if it's an issue with the creation position or scroll position.
-    The width being used for setting the scroll position was two less than the actual width.
-    Fixed by changing width of 84 to `min(s.screen_size().x, 86)`.
+- [x] the scroll position seems to be 3 off from where the bookmark was created. Figure out if it's an issue with the creation position or scroll position.  
+    The width being used for setting the scroll position was two less than the actual width.  
+    Fixed by changing width of 84 to `min(s.screen_size().x, 86)`.  
     Also happens when near the bottom, so need to check the screen size y against a known value.
 - [x] show book title on bookmark
 - [ ] clean up the mess from adding bookmarks
 - [x] add delete bookmark button
 - [ ] benchmark the speed/storage size of different zstd levels.
-- [ ] test dictionary trainging for compression
-    training on all books would probably take too long, but try it anyways
+- [ ] test dictionary trainging for compression  
+    training on all books would probably take too long, but try it anyways  
     will probably want to do something like train on the first n chapters of content
-- [ ] make scanning faster
-    Right now the scanning reads all books, hashes, parses, and then inserts them.
-    If I switch to async io functions I might be able to use an iterator/generator to read, hash, parse, and insert books as a stream.
-    This might improve scan time because it could do processing while waiting for io and it could reduce memory usage since it won't have to hold the data for all books.
-    I think I'd want to
-    - get books from library
-    - put the hashes in a hashset
-    - traverse the epub directory
-    - `map` the paths to (hash, buffer)
-    - `filter` the out ones that are in the hashset
-    - `map` the remaining ones to SourceBook
-    - `for_each` to insert each
-    Doing it this way, it should be a stream and not take up as much memory.
+- [ ] make scanning faster  
+    Right now the scanning reads all books, hashes, parses, and then inserts them.  
+    If I switch to async io functions I might be able to use Stream (from std or futures? probably futures since it isn't nightly and has StreamExt) to read, hash, parse, and insert books as a stream.  
+    This might improve scan time because it could do processing while waiting for io and it could reduce memory usage since it won't have to hold the data for all books.  
+    If I switch to using uuid for the primary keys, I could generate the ids in app instead of having to wait until they're inserted and selecting last_insert_rowid.  
+    I could:  
+    1. get books from library
+    2. put the hashes in a hashset
+    3. traverse the epub directory (use walkdir or do it manually and implement futures::stream::Stream? probably manually so I can do it async too)
+    4. `map` the paths to (hash, buffer)
+    5. `filter` out the ones that are in the hashset
+    6. `map` the remaining ones to book, chapter, and toc (no need for source versions since the only thing missing was ids and the uuid would be generated in app)
+    7. `for_each` to insert each  
+    Doing it this way, it should be a stream and not take up as much memory.  
+    [Blog post on using streams](https://gendignoux.com/blog/2021/04/01/rust-async-streams-futures-part1.html)
 - [ ] make illegal states unrepresentable and clean things up 
 
 ## Features Todo
@@ -55,35 +57,35 @@ Requirements:
     - [x] scan epub directory
     - [x] get metadata from epubs
     - [x] add to database
-    - [x] compare found books to library books and only insert new ones
-        hash all but the path, put books in a hashmap of hash => book
-            then, find the difference between the two maps and
-            for found books not in library, add to library
-            for library books not found, display errors
-            for found books in library, check that the paths match, if they do not, update the path in the library
-    - [ ] full text search
-        Trying to do full text search on all of fimfarchive didn't work out because of how large it is.
-        It took up about 19GB and searching it was unusably slow.
-	The library of a user would be *much* smaller so the storage space and speed would be less likely to be an issue.
-	There are essentially two main options for what to use for this searching.
-	1. Sqlite3 FTS5
-	    Pros:
-	    - uses the existing database that stores the books
-	    Cons:
-	    - more storage space
-	    - slower
-	2. Tantivy
-	    Pros:
-	    - less storage space
-	    - faster
-	    Cons:
-	    - adds an extra file
-	    - need to keep two systems in sync when adding books to the library
-	I think that the overhead of implementing both would be similar so I may do both and see which works best.
-	I could have a trait that defines the insert/query interface and implement it for sqlite and tantivy.
-	Then I could test it out with my calibre library.
-	If both work pretty similarly, I could test it out on all of fimfarchive and see if either one handles it well.
-	I'm pretty certain sqlite will not, but maybe tantivy could.
+    - [x] compare found books to library books and only insert new ones  
+        hash all but the path, put books in a hashmap of hash => book  
+            then, find the difference between the two maps and  
+            for found books not in library, add to library  
+            for library books not found, display errors  
+            for found books in library, check that the paths match, if they do not, update the path in the library  
+    - [ ] full text search  
+        Trying to do full text search on all of fimfarchive didn't work out because of how large it is.  
+        It took up about 19GB and searching it was unusably slow.  
+	The library of a user would be *much* smaller so the storage space and speed would be less likely to be an issue.  
+	There are essentially two main options for what to use for this searching.  
+	1. Sqlite3 FTS5  
+	    Pros:  
+	    - uses the existing database that stores the books  
+	    Cons:  
+	    - more storage space  
+	    - slower  
+	2. Tantivy  
+	    Pros:  
+	    - less storage space  
+	    - faster  
+	    Cons:  
+	    - adds an extra file  
+	    - need to keep two systems in sync when adding books to the library  
+	I think that the overhead of implementing both would be similar so I may do both and see which works best.  
+	I could have a trait that defines the insert/query interface and implement it for sqlite and tantivy.  
+	Then I could test it out with my calibre library.  
+	If both work pretty similarly, I could test it out on all of fimfarchive and see if either one handles it well.  
+	I'm pretty certain sqlite will not, but maybe tantivy could.  
 	[Sqlite3 FTS5](https://www.sqlite.org/fts5.html) [Tantivy query syntax](https://docs.rs/tantivy/0.15.3/tantivy/query/struct.QueryParser.html)
 - library
     - [x] list books in library
