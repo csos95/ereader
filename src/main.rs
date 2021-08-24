@@ -127,27 +127,27 @@ async fn scan<P: AsRef<Path>>(pool: &SqlitePool, path: P) {
 
 #[async_std::main]
 async fn main() {
-//    let pool = SqlitePool::connect("ereader.sqlite").await.unwrap();
-//    let start = chrono::Utc::now();
-//    let hashes = scan(&pool, "epub").await;
-//    let end = chrono::Utc::now();
-//    println!("start {}\nend {}\ndiff {}", start, end, end - start);
-//    pool.close().await;
+    let pool = SqlitePool::connect("ereader.sqlite").await.unwrap();
+    let start = chrono::Utc::now();
+    let hashes = scan(&pool, "epub").await;
+    let end = chrono::Utc::now();
+    println!("start {}\nend {}\ndiff {}", start, end, end - start);
+    pool.close().await;
 
 
-    let mut siv = Cursive::new();
-
-    let model = init().await.unwrap();
-    view(&mut siv, &model);
-    siv.set_user_data(model);
-
-    siv.add_global_callback('q', |s| s.quit());
-    siv.add_global_callback('l', |s| {
-        s.cb_sink()
-            .send(Box::new(move |s| update_view(s, Msg::GoLibrary)))
-            .unwrap();
-    });
-    siv.run();
+//    let mut siv = Cursive::new();
+//
+//    let model = init().await.unwrap();
+//    view(&mut siv, &model);
+//    siv.set_user_data(model);
+//
+//    siv.add_global_callback('q', |s| s.quit());
+//    siv.add_global_callback('l', |s| {
+//        s.cb_sink()
+//            .send(Box::new(move |s| update_view(s, Msg::GoLibrary)))
+//            .unwrap();
+//    });
+//    siv.run();
 }
 
 #[derive(Clone, Debug)]
