@@ -33,8 +33,20 @@ Requirements:
 - [x] add delete bookmark button
 - [ ] benchmark the speed/storage size of different zstd levels.
 - [ ] test dictionary trainging for compression  
-    training on all books would probably take too long, but try it anyways  
-    will probably want to do something like train on the first n chapters of content
+    Training on all books would probably take too long, but try it anyways.  
+    Will probably want to do something like train on the first n chapters of content.  
+    Alternatively:  
+    1. do the initial scan, process, and insert of books
+    2. have a function to manually recompress chapters with a dictionary.
+        It would:  
+        1. `select id, content from chapters`
+	2. decompress them all
+	3. train a dictionary on it all
+	4. store the dictionary in a settings table
+	5. recompress them all with the dictionary
+	6. update the chapters
+	7. probably need to vacuum since the majority of the data in the database will have just been overwritten  
+    There could also be settings for how large to make the dictionary, how many chapters to train it on, and how to select the chapters to train on (such as first n, largest n, smallest n, random n).
 - [ ] make scanning faster  
     Right now the scanning reads all books, hashes, parses, and then inserts them.  
     If I switch to async io functions I might be able to use Stream (from std or futures? probably futures since it isn't nightly and has StreamExt) to read, hash, parse, and insert books as a stream.  
@@ -43,7 +55,7 @@ Requirements:
     I could:  
     1. get books from library
     2. put the hashes in a hashset
-    3. traverse the epub directory (use walkdir or do it manually and implement futures::stream::Stream? probably manually so I can do it async too)
+    3. traverse the epub directory (use walkdir)
     4. `map` the paths to (hash, buffer)
     5. `filter` out the ones that are in the hashset
     6. `map` the remaining ones to book, chapter, and toc (no need for source versions since the only thing missing was ids and the uuid would be generated in app)

@@ -54,6 +54,64 @@ impl From<anyhow::Error> for Error {
     }
 }
 
+use futures::stream;
+use futures::StreamExt;
+use walkdir::WalkDir;
+use std::path::Path;
+
+async fn get_file<P: AsRef<async_std::path::Path>>(path: P) -> Vec<u8> {
+    async_std::fs::read(path).await.unwrap()
+}
+
+async fn hash(buff: Vec<u8>) -> (String, Vec<u8>) {
+    let hash = blake3::hash(buff.as_slice()).to_string();
+    (hash, buff)
+}
+
+fn entries<P: AsRef<Path>>(path: P) -> impl Iterator<Item = walkdir::DirEntry> {
+    WalkDir::new(&path)
+        .follow_links(true)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().unwrap_or_default() == "epub")
+}
+
+async fn hash_directory<P: AsRef<Path>>(path: P) {
+    stream::iter(entries(path))
+        .map(|e| async move { get_file(e.path()).await })
+        // buffering a few so there isn't a delay in reads
+        .buffered(4)
+        .then(|f| hash(f))
+        .for_each(|(hash, _buff)| {
+            println!("{}", hash);
+            futures::future::ready(())
+        })
+        .await
+}
+
+#[async_std::main]
+async fn main() {
+    let start = chrono::Utc::now();
+    let hashes = hash_directory("epub").await;
+    let end = chrono::Utc::now();
+    println!("start {}\nend {}\ndiff {}", start, end, end - start);
+
+
+//    let mut siv = Cursive::new();
+//
+//    let model = init().await.unwrap();
+//    view(&mut siv, &model);
+//    siv.set_user_data(model);
+//
+//    siv.add_global_callback('q', |s| s.quit());
+//    siv.add_global_callback('l', |s| {
+//        s.cb_sink()
+//            .send(Box::new(move |s| update_view(s, Msg::GoLibrary)))
+//            .unwrap();
+//    });
+//    siv.run();
+}
+
 #[derive(Clone, Debug)]
 struct Model {
     pool: SqlitePool,
@@ -211,23 +269,6 @@ fn view(s: &mut Cursive, model: &Model) {
         Page::TableOfContents(toc, book_id) => view_toc(s, toc, *book_id),
         Page::Bookmarks(bookmarks, books) => view_bookmarks(s, bookmarks, books),
     }
-}
-
-#[async_std::main]
-async fn main() {
-    let mut siv = Cursive::new();
-
-    let model = init().await.unwrap();
-    view(&mut siv, &model);
-    siv.set_user_data(model);
-
-    siv.add_global_callback('q', |s| s.quit());
-    siv.add_global_callback('l', |s| {
-        s.cb_sink()
-            .send(Box::new(move |s| update_view(s, Msg::GoLibrary)))
-            .unwrap();
-    });
-    siv.run();
 }
 
 fn error(s: &mut Cursive, e: Error) {
