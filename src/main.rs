@@ -59,15 +59,6 @@ use futures::StreamExt;
 use walkdir::WalkDir;
 use std::path::Path;
 
-async fn get_file<P: AsRef<async_std::path::Path>>(path: P) -> Vec<u8> {
-    async_std::fs::read(path).await.unwrap()
-}
-
-async fn hash(buff: Vec<u8>) -> (String, Vec<u8>) {
-    let hash = blake3::hash(buff.as_slice()).to_string();
-    (hash, buff)
-}
-
 fn entries<P: AsRef<Path>>(path: P) -> impl Iterator<Item = walkdir::DirEntry> {
     WalkDir::new(&path)
         .follow_links(true)
@@ -76,12 +67,21 @@ fn entries<P: AsRef<Path>>(path: P) -> impl Iterator<Item = walkdir::DirEntry> {
         .filter(|e| e.path().extension().unwrap_or_default() == "epub")
 }
 
+async fn get_file<P: AsRef<async_std::path::Path>>(path: P) -> Vec<u8> {
+    async_std::fs::read(path).await.unwrap()
+}
+
+fn hash(buff: Vec<u8>) -> (String, Vec<u8>) {
+    let hash = blake3::hash(buff.as_slice()).to_string();
+    (hash, buff)
+}
+
 async fn hash_directory<P: AsRef<Path>>(path: P) {
     stream::iter(entries(path))
         .map(|e| async move { get_file(e.path()).await })
         // buffering a few so there isn't a delay in reads
         .buffered(4)
-        .then(|f| hash(f))
+        .map(|f| hash(f))
         .for_each(|(hash, _buff)| {
             println!("{}", hash);
             futures::future::ready(())
