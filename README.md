@@ -131,3 +131,12 @@ Requirements:
     - [ ] parse and store metadata/epub download
     - [ ] search for books
     - [ ] copy epub to library
+- subcommands
+    - [ ] export bookmarks  
+	If I want to be able to export bookmarks, delete the database, rescan, and import bookmarks, the ids need to be consistent.  
+        Therefore, I'll need to use uuid v5.  
+	I could have a "root" uuid v5 made from the nil uuid and app name.  
+	Then, I could create uuid v5 for the books and chapters using the root and file bytes for books and the root and contents for chapters.  
+	The other tables like bookmarks and table_of_contents don't need to have consistent ids so I can use uuid v4 for them.
+    - [ ] import bookmarks
+    - [ ] scan
