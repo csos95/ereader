@@ -29,8 +29,23 @@ Requirements:
     Fixed by changing width of 84 to `min(s.screen_size().x, 86)`.  
     Also happens when near the bottom, so need to check the screen size y against a known value.
 - [x] show book title on bookmark
-- [ ] clean up the mess from adding bookmarks
 - [x] add delete bookmark button
+- [x] make scanning faster  
+    Right now the scanning reads all books, hashes, parses, and then inserts them.  
+    If I switch to async io functions I might be able to use Stream (from std or futures? probably futures since it isn't nightly and has StreamExt) to read, hash, parse, and insert books as a stream.  
+    This might improve scan time because it could do processing while waiting for io and it could reduce memory usage since it won't have to hold the data for all books.  
+    If I switch to using uuid for the primary keys, I could generate the ids in app instead of having to wait until they're inserted and selecting last_insert_rowid.  
+    I could:  
+    1. get books from library
+    2. put the hashes in a hashset
+    3. traverse the epub directory (use walkdir)
+    4. `map` the paths to (hash, buffer)
+    5. `filter` out the ones that are in the hashset
+    6. `map` the remaining ones to book, chapter, and toc (no need for source versions since the only thing missing was ids and the uuid would be generated in app)
+    7. `for_each` to insert each  
+    Doing it this way, it should be a stream and not take up as much memory.  
+    [Blog post on using streams](https://gendignoux.com/blog/2021/04/01/rust-async-streams-futures-part1.html)
+- [ ] try using tantivy to store fimfarchive index.json data
 - [ ] benchmark the speed/storage size of different zstd levels.
 - [ ] test dictionary trainging for compression  
     Training on all books would probably take too long, but try it anyways.  
@@ -47,21 +62,7 @@ Requirements:
 	6. update the chapters
 	7. probably need to vacuum since the majority of the data in the database will have just been overwritten  
     There could also be settings for how large to make the dictionary, how many chapters to train it on, and how to select the chapters to train on (such as first n, largest n, smallest n, random n).
-- [x] make scanning faster  
-    Right now the scanning reads all books, hashes, parses, and then inserts them.  
-    If I switch to async io functions I might be able to use Stream (from std or futures? probably futures since it isn't nightly and has StreamExt) to read, hash, parse, and insert books as a stream.  
-    This might improve scan time because it could do processing while waiting for io and it could reduce memory usage since it won't have to hold the data for all books.  
-    If I switch to using uuid for the primary keys, I could generate the ids in app instead of having to wait until they're inserted and selecting last_insert_rowid.  
-    I could:  
-    1. get books from library
-    2. put the hashes in a hashset
-    3. traverse the epub directory (use walkdir)
-    4. `map` the paths to (hash, buffer)
-    5. `filter` out the ones that are in the hashset
-    6. `map` the remaining ones to book, chapter, and toc (no need for source versions since the only thing missing was ids and the uuid would be generated in app)
-    7. `for_each` to insert each  
-    Doing it this way, it should be a stream and not take up as much memory.  
-    [Blog post on using streams](https://gendignoux.com/blog/2021/04/01/rust-async-streams-futures-part1.html)
+- [ ] clean up the mess from adding bookmarks
 - [ ] make illegal states unrepresentable and clean things up 
 
 ## Features Todo
