@@ -6,6 +6,8 @@ use sqlx::SqlitePool;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
+use uuid::adapter::Hyphenated;
+use uuid::Uuid;
 use walkdir::WalkDir;
 
 fn entries<P: AsRef<Path>>(path: P) -> impl Iterator<Item = walkdir::DirEntry> {
@@ -26,8 +28,6 @@ fn hash(buff: Vec<u8>) -> (String, Vec<u8>) {
 }
 
 fn process_epub(hash: String, buff: Vec<u8>) -> Result<(Book, Vec<Chapter>, Vec<Toc>), Error> {
-    use uuid::Uuid;
-
     let book_id = Uuid::new_v5(&Uuid::nil(), &buff);
 
     let mut doc = epub::doc::EpubDoc::from_reader(std::io::Cursor::new(buff))?;
@@ -40,8 +40,8 @@ fn process_epub(hash: String, buff: Vec<u8>) -> Result<(Book, Vec<Chapter>, Vec<
             let content = doc.get_resource_str(&id[..])?;
             let chapter_id = Uuid::new_v5(&book_id, content.as_bytes());
             Ok(Chapter {
-                id: chapter_id,
-                book_id,
+                id: Hyphenated::from(chapter_id),
+                book_id: Hyphenated::from(book_id),
                 index: i as i64 + 1,
                 content: zstd::stream::encode_all(content.as_bytes(), 8)?,
             })
@@ -75,7 +75,7 @@ fn process_epub(hash: String, buff: Vec<u8>) -> Result<(Book, Vec<Chapter>, Vec<
 
             Ok(Toc {
                 id: 0,
-                book_id,
+                book_id: Hyphenated::from(book_id),
                 index: index as i64,
                 chapter_id: chapters[spine_index as usize].id,
                 title: nav.label.clone(),
@@ -85,7 +85,7 @@ fn process_epub(hash: String, buff: Vec<u8>) -> Result<(Book, Vec<Chapter>, Vec<
 
     Ok((
         Book {
-            id: book_id,
+            id: Hyphenated::from(book_id),
             identifier: get_metadata(&doc, "identifier")?,
             language: get_metadata(&doc, "language")?,
             title: get_metadata(&doc, "title")?,

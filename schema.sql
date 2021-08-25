@@ -1,7 +1,7 @@
 -- noinspection SqlNoDataSourceInspectionForFile
 
 create table books (
-    id blob not null primary key,
+    id text not null primary key,
     identifier text not null,
     language text not null,
     title text not null,
@@ -17,8 +17,8 @@ create index book_creators_idx on books(creator);
 create index book_publishers_idx on books(publisher);
 
 create table chapters (
-    id blob not null primary key,
-    book_id blob not null,
+    id text not null primary key,
+    book_id text not null,
     `index` integer not null,
     content blob not null,
     unique(book_id, `index`)
@@ -27,9 +27,9 @@ create table chapters (
 
 create table table_of_contents (
     id integer not null primary key autoincrement,
-    book_id blob not null,
+    book_id text not null,
     `index` integer not null,
-    chapter_id blob not null,
+    chapter_id text not null,
     title text not null,
     unique(book_id, `index`)
     foreign key (book_id) references books(id),
@@ -38,8 +38,8 @@ create table table_of_contents (
 
 create table bookmarks (
     id integer not null primary key autoincrement,
-    book_id blob not null,
-    chapter_id blob not null,
+    book_id text not null,
+    chapter_id text not null,
     progress real not null,
     created datetime not null,
 -- only one bookmark per story, use 'insert or replace' to set a bookmark

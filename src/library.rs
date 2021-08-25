@@ -2,11 +2,11 @@ use crate::Error;
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
 use sqlx::{query, query_as};
-use uuid::Uuid;
+use uuid::adapter::Hyphenated;
 
 #[derive(Clone, Debug)]
 pub struct Book {
-    pub id: Uuid,
+    pub id: Hyphenated,
     pub identifier: String,
     pub language: String,
     pub title: String,
@@ -18,8 +18,8 @@ pub struct Book {
 
 #[derive(Clone, Debug)]
 pub struct Chapter {
-    pub id: Uuid,
-    pub book_id: Uuid,
+    pub id: Hyphenated,
+    pub book_id: Hyphenated,
     pub index: i64,
     pub content: Vec<u8>,
 }
@@ -27,17 +27,17 @@ pub struct Chapter {
 #[derive(Clone, Debug)]
 pub struct Toc {
     pub id: i64,
-    pub book_id: Uuid,
+    pub book_id: Hyphenated,
     pub index: i64,
-    pub chapter_id: Uuid,
+    pub chapter_id: Hyphenated,
     pub title: String,
 }
 
 #[derive(Clone, Debug)]
 pub struct Bookmark {
     pub id: i64,
-    pub book_id: Uuid,
-    pub chapter_id: Uuid,
+    pub book_id: Hyphenated,
+    pub chapter_id: Hyphenated,
     pub progress: f32,
     pub created: DateTime<Utc>,
 }
@@ -95,21 +95,25 @@ pub async fn insert_toc(
 }
 
 pub async fn get_books(pool: &SqlitePool) -> Result<Vec<Book>, Error> {
-    Ok(query_as!(Book, r#"select id as "id: Uuid", identifier, language, title, creator, description, publisher, hash from books order by title"#)
+    Ok(query_as!(Book, r#"select id as "id: Hyphenated", identifier, language, title, creator, description, publisher, hash from books order by title"#)
         .fetch_all(pool)
         .await?)
 }
 
-pub async fn get_book(pool: &SqlitePool, id: Uuid) -> Result<Book, Error> {
-    Ok(query_as!(Book, r#"select id as "id: Uuid", identifier, language, title, creator, description, publisher, hash from books where id = ?"#, id)
+pub async fn get_book(pool: &SqlitePool, id: Hyphenated) -> Result<Book, Error> {
+    Ok(query_as!(Book, r#"select id as "id: Hyphenated", identifier, language, title, creator, description, publisher, hash from books where id = ?"#, id)
         .fetch_one(pool)
         .await?)
 }
 
-pub async fn get_chapter(pool: &SqlitePool, book_id: Uuid, index: i64) -> Result<Chapter, Error> {
+pub async fn get_chapter(
+    pool: &SqlitePool,
+    book_id: Hyphenated,
+    index: i64,
+) -> Result<Chapter, Error> {
     Ok(query_as!(
         Chapter,
-        r#"select id as "id: Uuid", book_id as "book_id: Uuid", `index`, content from chapters where book_id = ? and `index` = ?"#,
+        r#"select id as "id: Hyphenated", book_id as "book_id: Hyphenated", `index`, content from chapters where book_id = ? and `index` = ?"#,
         book_id,
         index
     )
@@ -117,18 +121,18 @@ pub async fn get_chapter(pool: &SqlitePool, book_id: Uuid, index: i64) -> Result
     .await?)
 }
 
-pub async fn get_chapter_by_id(pool: &SqlitePool, id: Uuid) -> Result<Chapter, Error> {
+pub async fn get_chapter_by_id(pool: &SqlitePool, id: Hyphenated) -> Result<Chapter, Error> {
     Ok(
-        query_as!(Chapter, r#"select id as "id: Uuid", book_id as "book_id: Uuid", `index`, content from chapters where id = ?"#, id)
+        query_as!(Chapter, r#"select id as "id: Hyphenated", book_id as "book_id: Hyphenated", `index`, content from chapters where id = ?"#, id)
             .fetch_one(pool)
             .await?,
     )
 }
 
-pub async fn get_toc(pool: &SqlitePool, book_id: Uuid) -> Result<Vec<Toc>, Error> {
+pub async fn get_toc(pool: &SqlitePool, book_id: Hyphenated) -> Result<Vec<Toc>, Error> {
     Ok(query_as!(
         Toc,
-        r#"select id, book_id as "book_id: Uuid", `index`, chapter_id as "chapter_id: Uuid", title from table_of_contents where book_id = ? order by `index`"#,
+        r#"select id, book_id as "book_id: Hyphenated", `index`, chapter_id as "chapter_id: Hyphenated", title from table_of_contents where book_id = ? order by `index`"#,
         book_id,
     )
     .fetch_all(pool)
@@ -136,7 +140,7 @@ pub async fn get_toc(pool: &SqlitePool, book_id: Uuid) -> Result<Vec<Toc>, Error
 }
 
 pub async fn get_bookmarks(pool: &SqlitePool) -> Result<Vec<Bookmark>, Error> {
-    Ok(query_as!(Bookmark, r#"select id, book_id as "book_id: Uuid", chapter_id as "chapter_id: Uuid", progress, created as "created: DateTime<Utc>" from bookmarks order by created desc"#)
+    Ok(query_as!(Bookmark, r#"select id, book_id as "book_id: Hyphenated", chapter_id as "chapter_id: Hyphenated", progress, created as "created: DateTime<Utc>" from bookmarks order by created desc"#)
        .fetch_all(pool)
        .await?)
 }

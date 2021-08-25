@@ -10,7 +10,9 @@ use cursive_markup::html::RichRenderer;
 use cursive_markup::MarkupView;
 use library::{Book, Bookmark, Chapter, Toc};
 use sqlx::SqlitePool;
+use std::io::Write;
 use thiserror::Error;
+use uuid::adapter::Hyphenated;
 use uuid::Uuid;
 
 #[derive(Error, Debug)]
@@ -80,7 +82,9 @@ async fn main() {
     view(&mut siv, &model);
     siv.set_user_data(model);
 
-    siv.add_global_callback('q', |s| s.quit());
+    siv.add_global_callback('q', |s| {
+        cleanup(s);
+    });
     siv.add_global_callback('l', |s| {
         s.cb_sink()
             .send(Box::new(move |s| update_view(s, Msg::GoLibrary)))
@@ -99,22 +103,22 @@ struct Model {
 enum Page {
     Library(Vec<Book>),
     Chapter(Chapter, Option<f32>),
-    TableOfContents(Vec<Toc>, Uuid),
+    TableOfContents(Vec<Toc>, Hyphenated),
     Bookmarks(Vec<Bookmark>, Vec<Book>),
 }
 
 enum Msg {
     GoLibrary,
-    GoChapterIndex(Uuid, i64),
-    GoChapterId(Uuid),
-    GoChapterIdBookmark(Uuid, f32),
+    GoChapterIndex(Hyphenated, i64),
+    GoChapterId(Hyphenated),
+    GoChapterIdBookmark(Hyphenated, f32),
     NextChapter,
     PrevChapter,
     GoTOC,
     Scan,
     GoBookmarks,
     DeleteBookmark(i64),
-    SetBookmark(Uuid, Uuid, f32),
+    SetBookmark(Hyphenated, Hyphenated, f32),
 }
 
 async fn init() -> Result<Model, Error> {
@@ -126,6 +130,14 @@ async fn init() -> Result<Model, Error> {
         pool,
         page: Page::Library(books),
     })
+}
+
+fn cleanup(s: &mut Cursive) {
+    let model: Model = s.take_user_data().unwrap();
+
+    task::block_on(async { model.pool.close().await });
+
+    s.quit();
 }
 
 fn update_view(s: &mut Cursive, msg: Msg) {
@@ -268,7 +280,7 @@ fn view_library(s: &mut Cursive, books: &[Book]) {
         view.add_item(book.title.clone(), book.id);
     }
 
-    view.set_on_submit(|s: &mut Cursive, id: &Uuid| {
+    view.set_on_submit(|s: &mut Cursive, id: &Hyphenated| {
         let b_id = *id;
         s.cb_sink()
             .send(Box::new(move |s| {
@@ -294,7 +306,6 @@ pub fn log(message: String) {
         .open("debug.log")
         .unwrap();
 
-    use std::io::Write;
     writeln!(file, "{}", message).unwrap()
 }
 
@@ -362,7 +373,7 @@ fn view_chapter(s: &mut Cursive, chapter: &Chapter, progress: Option<f32>) {
     s.add_layer(dialog.max_width(90));
 }
 
-fn view_toc(s: &mut Cursive, toc: &[Toc], book_id: Uuid) {
+fn view_toc(s: &mut Cursive, toc: &[Toc], book_id: Hyphenated) {
     let mut view = SelectView::new();
 
     for toc in toc {
@@ -372,7 +383,7 @@ fn view_toc(s: &mut Cursive, toc: &[Toc], book_id: Uuid) {
     if toc.is_empty() {
         view.add_item(
             "No table of contents. Go to start.".to_string(),
-            Uuid::nil(),
+            Hyphenated::from_uuid(Uuid::nil()),
         );
     }
 
@@ -380,7 +391,7 @@ fn view_toc(s: &mut Cursive, toc: &[Toc], book_id: Uuid) {
         let c_id = *id;
         s.cb_sink()
             .send(Box::new(move |s| {
-                if c_id == Uuid::nil() {
+                if c_id == Hyphenated::from_uuid(Uuid::nil()) {
                     update_view(s, Msg::GoChapterIndex(book_id, 1));
                 } else {
                     update_view(s, Msg::GoChapterId(c_id));
@@ -397,7 +408,7 @@ fn view_toc(s: &mut Cursive, toc: &[Toc], book_id: Uuid) {
 }
 
 fn view_bookmarks(s: &mut Cursive, bookmarks: &[Bookmark], books: &[Book]) {
-    let mut view: SelectView<(Uuid, f32)> = SelectView::new();
+    let mut view: SelectView<(Hyphenated, f32)> = SelectView::new();
 
     for i in 0..bookmarks.len() {
         view.add_item(
@@ -409,7 +420,7 @@ fn view_bookmarks(s: &mut Cursive, bookmarks: &[Bookmark], books: &[Book]) {
     if bookmarks.is_empty() {
         view.add_item(
             "No bookmarks. Go to library.".to_string(),
-            (Uuid::nil(), 0.0),
+            (Hyphenated::from_uuid(Uuid::nil()), 0.0),
         );
     }
 
@@ -418,7 +429,7 @@ fn view_bookmarks(s: &mut Cursive, bookmarks: &[Bookmark], books: &[Book]) {
         let c_progress = *progress;
         s.cb_sink()
             .send(Box::new(move |s| {
-                if c_id == Uuid::nil() {
+                if c_id == Hyphenated::from_uuid(Uuid::nil()) {
                     update_view(s, Msg::GoLibrary);
                 } else {
                     update_view(s, Msg::GoChapterIdBookmark(c_id, c_progress));
