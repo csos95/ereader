@@ -4,13 +4,14 @@ mod scan;
 use async_std::task;
 use cursive::traits::Scrollable;
 use cursive::view::{Nameable, Resizable};
-use cursive::views::{Dialog, SelectView, TextView, ScrollView};
+use cursive::views::{Dialog, ScrollView, SelectView, TextView};
 use cursive::{Cursive, CursiveExt, View, XY};
-use cursive_markup::MarkupView;
 use cursive_markup::html::RichRenderer;
+use cursive_markup::MarkupView;
 use library::{Book, Bookmark, Chapter, Toc};
 use sqlx::SqlitePool;
 use thiserror::Error;
+use uuid::Uuid;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -18,8 +19,8 @@ pub enum Error {
     SqlxError(sqlx::Error),
     #[error("unable to parse epub")]
     UnableToParseEpub,
-    #[error("{0} is missing metadata tag {1}")]
-    MissingMetadata(String, String),
+    #[error("missing metadata tag {0}")]
+    MissingMetadata(String),
     #[error("unable to get resource")]
     UnableToGetResource,
     #[error("invalid spine index: {0}")]
@@ -32,6 +33,10 @@ pub enum Error {
     UnableToFindSelector(String),
     #[error("io error {0}")]
     IOError(std::io::Error),
+    #[error("url parse error {0}")]
+    UrlParseError(url::ParseError),
+    #[error("epub missing resource listed in table of contents")]
+    EpubMissingTocResource,
     #[error("debug message {0}")]
     DebugMsg(String),
 }
@@ -54,86 +59,20 @@ impl From<anyhow::Error> for Error {
     }
 }
 
-use futures::stream;
-use futures::StreamExt;
-use walkdir::WalkDir;
-use std::path::Path;
-
-fn entries<P: AsRef<Path>>(path: P) -> impl Iterator<Item = walkdir::DirEntry> {
-    WalkDir::new(&path)
-        .follow_links(true)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().unwrap_or_default() == "epub")
-}
-
-async fn get_file<P: AsRef<async_std::path::Path>>(path: P) -> Vec<u8> {
-    async_std::fs::read(path).await.unwrap()
-}
-
-fn hash(buff: Vec<u8>) -> (String, Vec<u8>) {
-    let hash = blake3::hash(buff.as_slice()).to_string();
-    (hash, buff)
-}
-
-fn process_epub(hash: String, buff: Vec<u8>) -> Book {
-    let mut doc = epub::doc::EpubDoc::from_reader(std::io::Cursor::new(buff))
-        .unwrap();
-
-    Book {
-        id: 1,
-        identifier: get_metadata(&doc, "identifier"),
-        language: get_metadata(&doc, "language"),
-        title: get_metadata(&doc, "title"),
-        creator: doc.mdata("creator"),
-        description: doc.mdata("description"),
-        publisher: doc.mdata("publisher"),
-        hash,
+impl From<url::ParseError> for Error {
+    fn from(e: url::ParseError) -> Self {
+        Error::UrlParseError(e)
     }
-}
-
-type Epub = epub::doc::EpubDoc<std::io::Cursor<Vec<u8>>>;
-
-fn get_metadata(doc: &Epub, tag: &str) -> String {
-    doc.mdata(tag).unwrap()
-}
-
-async fn scan<P: AsRef<Path>>(pool: &SqlitePool, path: P) {
-    stream::iter(entries(path))
-        .map(|e| async move { get_file(e.path()).await })
-        // buffering a few so there isn't a delay in reads
-        .buffered(4)
-        .map(|f| hash(f))
-        .map(|(hash, buff)| process_epub(hash, buff))
-        .chunks(256)
-        .then(|books| async move {
-            let mut tx = pool.begin().await.unwrap();
-            for book in books {
-                library::insert_book_temp(&mut tx, &book).await.unwrap();
-            }
-            tx.commit().await.unwrap();
-        })
-        .collect()
-//        .for_each(|book| {
-//            //println!("{}", hash);
-//            //let book = process_epub(hash, buff);
-//            println!("{:?}", book);
-//            // then do insert_book
-//
-//            futures::future::ready(())
-//        })
-        .await
 }
 
 #[async_std::main]
 async fn main() {
-//    let pool = SqlitePool::connect("ereader.sqlite").await.unwrap();
-//    let start = chrono::Utc::now();
-//    let hashes = scan(&pool, "epub").await;
-//    let end = chrono::Utc::now();
-//    println!("start {}\nend {}\ndiff {}", start, end, end - start);
-//    pool.close().await;
-
+    // let pool = SqlitePool::connect("ereader.sqlite").await.unwrap();
+    // let start = chrono::Utc::now();
+    // scan::scan(&pool, "epub").await.unwrap();
+    // let end = chrono::Utc::now();
+    // println!("start {}\nend {}\ndiff {}", start, end, end - start);
+    // pool.close().await;
 
     let mut siv = Cursive::new();
 
@@ -160,22 +99,22 @@ struct Model {
 enum Page {
     Library(Vec<Book>),
     Chapter(Chapter, Option<f32>),
-    TableOfContents(Vec<Toc>, i64),
+    TableOfContents(Vec<Toc>, Uuid),
     Bookmarks(Vec<Bookmark>, Vec<Book>),
 }
 
 enum Msg {
     GoLibrary,
-    GoChapterIndex(i64, i64),
-    GoChapterId(i64),
-    GoChapterIdBookmark(i64, f32),
+    GoChapterIndex(Uuid, i64),
+    GoChapterId(Uuid),
+    GoChapterIdBookmark(Uuid, f32),
     NextChapter,
     PrevChapter,
     GoTOC,
     Scan,
     GoBookmarks,
     DeleteBookmark(i64),
-    SetBookmark(i64, i64, f32),
+    SetBookmark(Uuid, Uuid, f32),
 }
 
 async fn init() -> Result<Model, Error> {
@@ -196,9 +135,9 @@ fn update_view(s: &mut Cursive, msg: Msg) {
         Ok(model) => {
             s.pop_layer();
             view(s, &model);
-        
+
             s.set_user_data(model);
-        },
+        }
         Err(e) => {
             error(s, e);
             s.set_user_data(model);
@@ -248,9 +187,7 @@ fn update(msg: Msg, mut model: Model) -> Result<Model, Error> {
             Page::Library(books)
         }
         (Msg::Scan, page) => {
-            task::block_on(async {
-                scan::scan(pool, "epub").await
-            })?;
+            task::block_on(async { scan::scan(pool, "epub").await })?;
             page
         }
         (Msg::GoBookmarks, _) => {
@@ -267,13 +204,17 @@ fn update(msg: Msg, mut model: Model) -> Result<Model, Error> {
         }
         (Msg::SetBookmark(book_id, chapter_id, progress), Page::Chapter(chapter, _)) => {
             task::block_on(async {
-                library::insert_bookmark(pool, &library::Bookmark {
-                    id: 0,
-                    book_id,
-                    chapter_id,
-                    progress,
-                    created: chrono::Utc::now(),
-                }).await
+                library::insert_bookmark(
+                    pool,
+                    &library::Bookmark {
+                        id: 0,
+                        book_id,
+                        chapter_id,
+                        progress,
+                        created: chrono::Utc::now(),
+                    },
+                )
+                .await
             })?;
             Page::Chapter(chapter, Some(progress))
         }
@@ -327,7 +268,7 @@ fn view_library(s: &mut Cursive, books: &[Book]) {
         view.add_item(book.title.clone(), book.id);
     }
 
-    view.set_on_submit(|s: &mut Cursive, id: &i64| {
+    view.set_on_submit(|s: &mut Cursive, id: &Uuid| {
         let b_id = *id;
         s.cb_sink()
             .send(Box::new(move |s| {
@@ -345,7 +286,8 @@ fn view_library(s: &mut Cursive, books: &[Book]) {
     );
 }
 
-fn log(message: String) {
+#[allow(dead_code)]
+pub fn log(message: String) {
     let mut file = std::fs::OpenOptions::new()
         .write(true)
         .append(true)
@@ -368,7 +310,7 @@ fn view_chapter(s: &mut Cursive, chapter: &Chapter, progress: Option<f32>) {
     if let Some(progress) = progress {
         let x = std::cmp::min(s.screen_size().x - 6, 86);
         scrollable.layout(XY::new(x, 65));
-    
+
         let size = scrollable.inner_size();
         let offset_y = (size.y as f32 * progress).round() as usize;
         scrollable.set_offset(XY::new(0, offset_y));
@@ -401,19 +343,26 @@ fn view_chapter(s: &mut Cursive, chapter: &Chapter, progress: Option<f32>) {
     let b_id = chapter.book_id;
     let c_id = chapter.id;
     dialog.add_button("Bookmark", move |s| {
-        let (viewport, size) = s.call_on_name("reader", |view: &mut ScrollView<MarkupView<RichRenderer>>| {
-            (view.content_viewport(), view.inner_size())
-        }).unwrap();
+        let (viewport, size) = s
+            .call_on_name(
+                "reader",
+                |view: &mut ScrollView<MarkupView<RichRenderer>>| {
+                    (view.content_viewport(), view.inner_size())
+                },
+            )
+            .unwrap();
         let progress = viewport.top() as f32 / size.y as f32;
         s.cb_sink()
-            .send(Box::new(move |s| update_view(s, Msg::SetBookmark(b_id, c_id, progress))))
+            .send(Box::new(move |s| {
+                update_view(s, Msg::SetBookmark(b_id, c_id, progress))
+            }))
             .unwrap();
     });
 
     s.add_layer(dialog.max_width(90));
 }
 
-fn view_toc(s: &mut Cursive, toc: &[Toc], book_id: i64) {
+fn view_toc(s: &mut Cursive, toc: &[Toc], book_id: Uuid) {
     let mut view = SelectView::new();
 
     for toc in toc {
@@ -421,16 +370,21 @@ fn view_toc(s: &mut Cursive, toc: &[Toc], book_id: i64) {
     }
 
     if toc.is_empty() {
-        view.add_item("No table of contents. Go to start.".to_string(), 0);
+        view.add_item(
+            "No table of contents. Go to start.".to_string(),
+            Uuid::nil(),
+        );
     }
 
     view.set_on_submit(move |s, id| {
         let c_id = *id;
         s.cb_sink()
-            .send(Box::new(move |s| if c_id == 0 {
-                update_view(s, Msg::GoChapterIndex(book_id, 1));
-            } else {
-                update_view(s, Msg::GoChapterId(c_id));
+            .send(Box::new(move |s| {
+                if c_id == Uuid::nil() {
+                    update_view(s, Msg::GoChapterIndex(book_id, 1));
+                } else {
+                    update_view(s, Msg::GoChapterId(c_id));
+                }
             }))
             .unwrap();
     });
@@ -443,24 +397,32 @@ fn view_toc(s: &mut Cursive, toc: &[Toc], book_id: i64) {
 }
 
 fn view_bookmarks(s: &mut Cursive, bookmarks: &[Bookmark], books: &[Book]) {
-    let mut view: SelectView<(i64, f32)> = SelectView::new();
+    let mut view: SelectView<(Uuid, f32)> = SelectView::new();
 
     for i in 0..bookmarks.len() {
-        view.add_item(format!("{}", books[i].title), (bookmarks[i].chapter_id, bookmarks[i].progress));
+        view.add_item(
+            &books[i].title[..],
+            (bookmarks[i].chapter_id, bookmarks[i].progress),
+        );
     }
 
     if bookmarks.is_empty() {
-        view.add_item("No bookmarks. Go to library.".to_string(), (0, 0.0));
+        view.add_item(
+            "No bookmarks. Go to library.".to_string(),
+            (Uuid::nil(), 0.0),
+        );
     }
 
     view.set_on_submit(move |s, (id, progress)| {
         let c_id = *id;
         let c_progress = *progress;
         s.cb_sink()
-            .send(Box::new(move |s| if c_id == 0 {
-                update_view(s, Msg::GoLibrary);
-            } else {
-                update_view(s, Msg::GoChapterIdBookmark(c_id, c_progress));
+            .send(Box::new(move |s| {
+                if c_id == Uuid::nil() {
+                    update_view(s, Msg::GoLibrary);
+                } else {
+                    update_view(s, Msg::GoChapterIdBookmark(c_id, c_progress));
+                }
             }))
             .unwrap();
     });
@@ -468,14 +430,16 @@ fn view_bookmarks(s: &mut Cursive, bookmarks: &[Bookmark], books: &[Book]) {
     let mut dialog = Dialog::around(view.with_name("bookmarks").scrollable());
 
     dialog.add_button("Delete", move |s| {
-        let bookmark = s.call_on_name("bookmarks", |view: &mut SelectView<(i64, f32)>| {
-            view.selection().unwrap()
-        }).unwrap();
+        let bookmark = s
+            .call_on_name("bookmarks", |view: &mut SelectView<(i64, f32)>| {
+                view.selection().unwrap()
+            })
+            .unwrap();
         let id = bookmark.0;
         s.cb_sink()
             .send(Box::new(move |s| update_view(s, Msg::DeleteBookmark(id))))
             .unwrap();
     });
 
-    s.add_layer(dialog.title("Bookmarks").max_width(90),);
+    s.add_layer(dialog.title("Bookmarks").max_width(90));
 }

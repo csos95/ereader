@@ -47,7 +47,7 @@ Requirements:
 	6. update the chapters
 	7. probably need to vacuum since the majority of the data in the database will have just been overwritten  
     There could also be settings for how large to make the dictionary, how many chapters to train it on, and how to select the chapters to train on (such as first n, largest n, smallest n, random n).
-- [ ] make scanning faster  
+- [x] make scanning faster  
     Right now the scanning reads all books, hashes, parses, and then inserts them.  
     If I switch to async io functions I might be able to use Stream (from std or futures? probably futures since it isn't nightly and has StreamExt) to read, hash, parse, and insert books as a stream.  
     This might improve scan time because it could do processing while waiting for io and it could reduce memory usage since it won't have to hold the data for all books.  
@@ -131,3 +131,12 @@ Requirements:
     - [ ] parse and store metadata/epub download
     - [ ] search for books
     - [ ] copy epub to library
+- subcommands
+    - [ ] export bookmarks  
+	If I want to be able to export bookmarks, delete the database, rescan, and import bookmarks, the ids need to be consistent.  
+        Therefore, I'll need to use uuid v5.  
+	I could have a "root" uuid v5 made from the nil uuid and app name.  
+	Then, I could create uuid v5 for the books and chapters using the root and file bytes for books and the root and contents for chapters.  
+	The other tables like bookmarks and table_of_contents don't need to have consistent ids so I can use uuid v4 for them.
+    - [ ] import bookmarks
+    - [ ] scan

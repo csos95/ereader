@@ -1,148 +1,62 @@
-use crate::library;
+use crate::library::{self, Book, Chapter, Toc};
 use crate::Error;
-use epub::doc::EpubDoc;
-use itertools::{Either, Itertools};
+use futures::{stream, StreamExt, TryStreamExt};
 use percent_encoding::percent_decode_str;
 use sqlx::SqlitePool;
-use std::collections::HashMap;
 use std::collections::HashSet;
-use std::fs::{read, read_dir};
-use std::io::Cursor;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
+use walkdir::WalkDir;
 
-#[derive(Clone, Debug)]
-pub struct SourceBook {
-    pub identifier: String,
-    pub language: String,
-    pub title: String,
-    pub creator: Option<String>,
-    pub description: Option<String>,
-    pub publisher: Option<String>,
-    pub hash: String,
-    pub chapters: Vec<SourceChapter>,
-    pub toc: Vec<SourceTOC>,
-}
-
-#[derive(Clone, Debug)]
-pub struct SourceChapter {
-    pub index: i64,
-    pub content: String,
-}
-
-// book_id integer not null,
-// `index` integer not null,
-// chapter_id integer not null,
-// title text not null,
-
-#[derive(Clone, Debug)]
-pub struct SourceTOC {
-    pub spine_index: i64,
-    pub title: String,
-}
-
-pub async fn scan<P: AsRef<Path>>(pool: &SqlitePool, path: P) -> Result<(), Error> {
-    // get the books in the epub directory
-    let (found_books, errors) = scan_directory(path)?;
-
-    // put the found books into a set and map
-    let (f1, f2) = found_books.into_iter().tee();
-
-    let found_hashes = f1.into_iter().fold(HashSet::new(), |mut set, book| {
-        set.insert(book.hash);
-        set
-    });
-
-    let found_map = f2.into_iter().fold(HashMap::new(), |mut map, book| {
-        map.insert(book.hash.clone(), book);
-        map
-    });
-
-    // get the books in the library
-    let library_books = library::get_books(pool).await?;
-
-    // put the library books in a set
-    let library_hashes = library_books
+fn entries<P: AsRef<Path>>(path: P) -> impl Iterator<Item = walkdir::DirEntry> {
+    WalkDir::new(&path)
+        .follow_links(true)
         .into_iter()
-        .fold(HashSet::new(), |mut set, book| {
-            set.insert(book.hash);
-            set
-        });
-
-    // find the difference of the sets found_set - library_set to get the new books
-    let new_hashes = found_hashes.difference(&library_hashes);
-
-    // insert the new books
-    for hash in new_hashes {
-        let new_book = found_map.get(hash).unwrap();
-        library::insert_book(pool, new_book).await?;
-    }
-
-    // print any errors in scanning (might just be permissions errors so don't want to just crash)
-    for error in errors {
-        println!("{:?}", error);
-    }
-
-    Ok(())
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().unwrap_or_default() == "epub")
 }
 
-pub fn scan_directory<P: AsRef<Path>>(path: P) -> Result<(Vec<SourceBook>, Vec<Error>), Error> {
-    // get books in current directory
-    let (mut books, mut errors): (Vec<SourceBook>, Vec<Error>) = read_dir(&path)?
-        .filter_map(|entry| entry.ok())
-        .filter(|dir| dir.path().extension().unwrap_or_default() == "epub")
-        .partition_map(|dir| match scan_book(dir.path()) {
-            Ok(book) => Either::Left(book),
-            Err(e) => Either::Right(e),
-        });
-
-    // get paths of sub directories
-    let sub_paths = read_dir(&path)?
-        .filter_map(|entry| entry.ok())
-        .filter_map(|dir| {
-            if let Ok(file_type) = dir.file_type() {
-                if file_type.is_dir() || file_type.is_symlink() {
-                    return Some(dir.path());
-                }
-            }
-            None
-        });
-
-    // scan the sub directories
-    for path in sub_paths {
-        let (mut sub_books, mut sub_errors) = scan_directory(path)?;
-        books.append(&mut sub_books);
-        errors.append(&mut sub_errors)
-    }
-
-    Ok((books, errors))
+async fn get_file<P: AsRef<async_std::path::Path>>(path: P) -> Result<Vec<u8>, Error> {
+    Ok(async_std::fs::read(path).await?)
 }
 
-fn scan_book<P: AsRef<Path>>(path: P) -> Result<SourceBook, Error> {
-    let buff = read(&path)?;
-    let hash = blake3::hash(buff.as_slice());
-    let cursor = Cursor::new(buff);
-    let mut doc = EpubDoc::from_reader(cursor).map_err(|_| Error::UnableToParseEpub)?;
+fn hash(buff: Vec<u8>) -> (String, Vec<u8>) {
+    let hash = blake3::hash(buff.as_slice()).to_string();
+    (hash, buff)
+}
+
+fn process_epub(hash: String, buff: Vec<u8>) -> Result<(Book, Vec<Chapter>, Vec<Toc>), Error> {
+    use uuid::Uuid;
+
+    let book_id = Uuid::new_v5(&Uuid::nil(), &buff);
+
+    let mut doc = epub::doc::EpubDoc::from_reader(std::io::Cursor::new(buff))?;
 
     let spine = doc.spine.clone();
     let chapters = spine
         .into_iter()
         .enumerate()
         .map(|(i, id)| {
-            SourceChapter {
+            let content = doc.get_resource_str(&id[..])?;
+            let chapter_id = Uuid::new_v5(&book_id, content.as_bytes());
+            Ok(Chapter {
+                id: chapter_id,
+                book_id,
                 index: i as i64 + 1,
-                content: doc.get_resource_str(&id[..]).unwrap(),
-            }
+                content: zstd::stream::encode_all(content.as_bytes(), 8)?,
+            })
         })
-        .collect::<Vec<SourceChapter>>();
+        .collect::<Result<Vec<Chapter>, Error>>()?;
 
     let toc = doc
         .toc
         .iter()
-        .map(|nav| {
+        .enumerate()
+        .map(|(index, nav)| {
             // Some TOC links have a fragment to jump to a specific spot in the chapter.
             // I need to remove that so the link can be turned into a spine index.
             let mut url =
-                url::Url::parse(&format!("epub:///{}", nav.content.to_string_lossy())[..]).unwrap();
+                url::Url::parse(&format!("epub:///{}", nav.content.to_string_lossy())[..])?;
             url.set_fragment(None);
 
             let absolute_path = url.to_string();
@@ -154,32 +68,88 @@ fn scan_book<P: AsRef<Path>>(path: P) -> Result<SourceBook, Error> {
             let mut content_path = PathBuf::new();
             content_path.push(decoded_path);
 
-            SourceTOC {
-                spine_index: doc.resource_uri_to_chapter(&content_path).unwrap() as i64 + 1,
-                title: nav.label.clone(),
-            }
-        })
-        .collect::<Vec<SourceTOC>>();
+            let spine_index = match doc.resource_uri_to_chapter(&content_path) {
+                Some(i) => Ok(i),
+                None => Err(Error::EpubMissingTocResource),
+            }? as i64;
 
-    Ok(SourceBook {
-        identifier: get_metadata(&path, &doc, "identifier")?,
-        language: get_metadata(&path, &doc, "language")?,
-        title: get_metadata(&path, &doc, "title")?,
-        creator: doc.mdata("creator"),
-        description: doc.mdata("description"),
-        publisher: doc.mdata("publisher"),
-        hash: hash.to_string(),
+            Ok(Toc {
+                id: 0,
+                book_id,
+                index: index as i64,
+                chapter_id: chapters[spine_index as usize].id,
+                title: nav.label.clone(),
+            })
+        })
+        .collect::<Result<Vec<Toc>, Error>>()?;
+
+    Ok((
+        Book {
+            id: book_id,
+            identifier: get_metadata(&doc, "identifier")?,
+            language: get_metadata(&doc, "language")?,
+            title: get_metadata(&doc, "title")?,
+            creator: doc.mdata("creator"),
+            description: doc.mdata("description"),
+            publisher: doc.mdata("publisher"),
+            hash,
+        },
         chapters,
         toc,
-    })
+    ))
 }
 
-fn get_metadata<P: AsRef<Path>>(
-    path: P,
-    doc: &EpubDoc<Cursor<Vec<u8>>>,
-    tag: &str,
-) -> Result<String, Error> {
-    doc.mdata(tag).ok_or_else(|| {
-        Error::MissingMetadata(path.as_ref().to_string_lossy().to_string(), tag.to_string())
-    })
+type Epub = epub::doc::EpubDoc<std::io::Cursor<Vec<u8>>>;
+
+fn get_metadata(doc: &Epub, tag: &str) -> Result<String, Error> {
+    doc.mdata(tag)
+        .ok_or_else(|| Error::MissingMetadata(tag.to_string()))
+}
+
+async fn library_hashes(pool: &SqlitePool) -> Result<HashSet<String>, Error> {
+    let library_books = library::get_books(pool).await?;
+
+    Ok(library_books
+        .into_iter()
+        .fold(HashSet::new(), |mut set, book| {
+            set.insert(book.hash);
+            set
+        }))
+}
+
+pub async fn scan<P: AsRef<Path>>(pool: &SqlitePool, path: P) -> Result<(), Error> {
+    let library_hashes = library_hashes(pool).await?;
+    let mut new_hashes = HashSet::<String>::new();
+
+    stream::iter(entries(path))
+        .map(|e| async move { get_file(e.path()).await })
+        // buffering a few so there isn't a delay in reads
+        .buffer_unordered(4)
+        .and_then(|buff| async move { Ok(hash(buff)) })
+        .try_filter_map(|(hash, buff)| {
+            let result = if !library_hashes.contains(&hash) && !new_hashes.contains(&hash) {
+                new_hashes.insert(hash.clone());
+                Some((hash, buff))
+            } else {
+                None
+            };
+            async move { Ok(result) }
+        })
+        .map_ok(|(hash, buff)| process_epub(hash, buff))
+        .try_for_each(|result| async move {
+            let (book, chapters, toc) = result?;
+            let mut tx = pool.begin().await?;
+            library::insert_book(&mut tx, &book).await?;
+            for chapter in chapters {
+                library::insert_chapter(&mut tx, &chapter).await?;
+            }
+            for toc in toc {
+                library::insert_toc(&mut tx, &toc).await?;
+            }
+            tx.commit().await?;
+            Ok(())
+        })
+        .await?;
+
+    Ok(())
 }
