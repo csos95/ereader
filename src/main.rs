@@ -19,8 +19,8 @@ pub enum Error {
     SqlxError(sqlx::Error),
     #[error("unable to parse epub")]
     UnableToParseEpub,
-    #[error("{0} is missing metadata tag {1}")]
-    MissingMetadata(String, String),
+    #[error("missing metadata tag {0}")]
+    MissingMetadata(String),
     #[error("unable to get resource")]
     UnableToGetResource,
     #[error("invalid spine index: {0}")]
@@ -33,6 +33,10 @@ pub enum Error {
     UnableToFindSelector(String),
     #[error("io error {0}")]
     IOError(std::io::Error),
+    #[error("url parse error {0}")]
+    UrlParseError(url::ParseError),
+    #[error("epub missing resource listed in table of contents")]
+    EpubMissingTocResource,
     #[error("debug message {0}")]
     DebugMsg(String),
 }
@@ -52,6 +56,12 @@ impl From<std::io::Error> for Error {
 impl From<anyhow::Error> for Error {
     fn from(e: anyhow::Error) -> Self {
         Error::AnyhowError(e)
+    }
+}
+
+impl From<url::ParseError> for Error {
+    fn from(e: url::ParseError) -> Self {
+        Error::UrlParseError(e)
     }
 }
 
@@ -277,7 +287,7 @@ fn view_library(s: &mut Cursive, books: &[Book]) {
 }
 
 #[allow(dead_code)]
-fn log(message: String) {
+pub fn log(message: String) {
     let mut file = std::fs::OpenOptions::new()
         .write(true)
         .append(true)
