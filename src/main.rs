@@ -69,12 +69,12 @@ impl From<url::ParseError> for Error {
 
 #[async_std::main]
 async fn main() {
-    // let pool = SqlitePool::connect("ereader.sqlite").await.unwrap();
-    // let start = chrono::Utc::now();
-    // scan::scan(&pool, "epub").await.unwrap();
-    // let end = chrono::Utc::now();
-    // println!("start {}\nend {}\ndiff {}", start, end, end - start);
-    // pool.close().await;
+    //let pool = SqlitePool::connect("ereader.sqlite").await.unwrap();
+    //let start = chrono::Utc::now();
+    //scan::scan(&pool, "epub").await.unwrap();
+    //let end = chrono::Utc::now();
+    //println!("start {}\nend {}\ndiff {}", start, end, end - start);
+    //pool.close().await;
 
     let mut siv = Cursive::new();
 

@@ -38,7 +38,11 @@ fn process_epub(hash: String, buff: Vec<u8>) -> Result<(Book, Vec<Chapter>, Vec<
         .enumerate()
         .map(|(i, id)| {
             let content = doc.get_resource_str(&id[..])?;
-            let chapter_id = Uuid::new_v5(&book_id, content.as_bytes());
+            // chapters within the same book could have the same contents
+            // using another level of uuid with the chapter index to avoid that
+            let chapter_index_id = Uuid::new_v5(&book_id, &i.to_le_bytes());
+            let chapter_id = Uuid::new_v5(&chapter_index_id, content.as_bytes());
+
             Ok(Chapter {
                 id: Hyphenated::from(chapter_id),
                 book_id: Hyphenated::from(book_id),
