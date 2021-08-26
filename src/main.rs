@@ -67,8 +67,85 @@ impl From<url::ParseError> for Error {
     }
 }
 
+use std::fs::File;
+use std::path::Path;
+use std::io::{Lines, BufReader, BufRead};
+
+type FileLines = Lines<BufReader<File>>;
+
+fn file_lines<P: AsRef<Path>>(path: P) -> Result<FileLines, Error> {
+    let file = File::open(path)?;
+    let reader = BufReader::new(file);
+
+    Ok(reader.lines())
+}
+
+use serde::Deserialize;
+
+#[derive(Deserialize, Debug)]
+struct FimfArchiveAuthor {
+    id: i64,
+    name: String,
+    #[serde(rename = "bio.html")]
+    bio: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct FimfArchiveTag {
+    id: i64,
+    name: String,
+    #[serde(rename = "type")]
+    category: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct FimfArchiveArchive {
+    path: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct FimfArchiveBook {
+    id: i64,
+    archive: FimfArchiveArchive,
+    author: FimfArchiveAuthor,
+    title: Option<String>,
+    #[serde(rename = "description_html")]
+    description: Option<String>,
+    #[serde(rename = "completion_status")]
+    status: String,
+    #[serde(rename = "content_rating")]
+    rating: String,
+    #[serde(rename = "num_likes")]
+    likes: i64,
+    #[serde(rename = "num_dislikes")]
+    dislikes: i64,
+    #[serde(rename = "num_words")]
+    words: i64,
+    tags: Vec<FimfArchiveTag>,
+}
+
 #[async_std::main]
 async fn main() {
+    for (i, line) in file_lines("/home/csos95/.config/fimr/index.json").unwrap().enumerate().take(10) {
+        let line = line.unwrap();
+        if line.len() != 1 {
+            // ignore the object key and trailing comma
+            let mut start = 0;
+            for j in 0..line.len() {
+                if line.as_bytes()[j] == b'{' {
+                    start = j;
+                    break;
+                }
+            }
+            let end = line.len() - 1;
+            let object = &line[start..end];
+
+            let book: FimfArchiveBook = serde_json::from_str(object).unwrap();
+            println!("{:#?}", book);
+        }
+    }
+
+
     //let pool = SqlitePool::connect("ereader.sqlite").await.unwrap();
     //let start = chrono::Utc::now();
     //scan::scan(&pool, "epub").await.unwrap();
@@ -76,21 +153,21 @@ async fn main() {
     //println!("start {}\nend {}\ndiff {}", start, end, end - start);
     //pool.close().await;
 
-    let mut siv = Cursive::new();
+    //let mut siv = Cursive::new();
 
-    let model = init().await.unwrap();
-    view(&mut siv, &model);
-    siv.set_user_data(model);
+    //let model = init().await.unwrap();
+    //view(&mut siv, &model);
+    //siv.set_user_data(model);
 
-    siv.add_global_callback('q', |s| {
-        cleanup(s);
-    });
-    siv.add_global_callback('l', |s| {
-        s.cb_sink()
-            .send(Box::new(move |s| update_view(s, Msg::GoLibrary)))
-            .unwrap();
-    });
-    siv.run();
+    //siv.add_global_callback('q', |s| {
+    //    cleanup(s);
+    //});
+    //siv.add_global_callback('l', |s| {
+    //    s.cb_sink()
+    //        .send(Box::new(move |s| update_view(s, Msg::GoLibrary)))
+    //        .unwrap();
+    //});
+    //siv.run();
 }
 
 #[derive(Clone, Debug)]
