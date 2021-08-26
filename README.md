@@ -51,6 +51,29 @@ Requirements:
     I forgot about the fact that two chapters could have the same contents.  
     Added another level of uuid with the chapter index to avoid collisions.
 - [ ] try using tantivy to store fimfarchive index.json data
+    - [x] load data from index.json
+    - [x] make tantivy index
+    - [x] put title, author, description, path in tantivy index
+        text
+    - [x] put likes, dislikes, wilson, words in index
+        i64 for all but wilson which is f64
+    - [x] put status, rating in index
+        facet
+    - [x] put tags in index
+        facet
+    - [ ] search on title and description
+    - [ ] parse out "author:csos95" to search on author
+        facet term query
+    - [ ] parse out "#Comedy" to search on tag
+        facet term query
+    - [ ] parse out "words>1000" to search on words (do other comparisons too)
+        range query
+    - [ ] do the same for likes, dislikes, wilson
+        range query
+    - [ ] parse out "rating:Everyone" and "status:Complete" to search on rating and status
+        facet term query
+    - [ ] parse out "order:likes" to sort by likes (do same for dislikes, wilson, words)
+        use TopDocs::order_by_fast_field
 - [ ] benchmark the speed/storage size of different zstd levels.
 - [ ] test dictionary trainging for compression  
     Training on all books would probably take too long, but try it anyways.  

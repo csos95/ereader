@@ -124,9 +124,58 @@ struct FimfArchiveBook {
     tags: Vec<FimfArchiveTag>,
 }
 
+fn wilson_bounds(positive: f64, negative: f64) -> (f64, f64) {
+    let total = positive + negative;
+
+    let phat = positive / total;
+    let z = 1.96;
+
+    let a = phat + z * z / (2.0 * total);
+    let b = z * ((phat * (1.0 - phat) + z * z / (4.0 * total)) / total).sqrt();
+    let c = 1.0 + z * z / total;
+
+    ((a - b) / c, (a + b) / c)
+}
+
+use tantivy::collector::TopDocs;
+use tantivy::query::QueryParser;
+use tantivy::schema::*;
+use tantivy::Index;
+use tantivy::ReloadPolicy;
+
 #[async_std::main]
 async fn main() {
-    for (i, line) in file_lines("/home/csos95/.config/fimr/index.json").unwrap().enumerate().take(10) {
+    let mut schema_builder = Schema::builder();
+    schema_builder.add_text_field("title", TEXT | STORED);
+    schema_builder.add_text_field("description", TEXT | STORED);
+    schema_builder.add_text_field("author", TEXT | STORED);
+    schema_builder.add_text_field("path", TEXT | STORED);
+    schema_builder.add_i64_field("likes", INDEXED | STORED | FAST);
+    schema_builder.add_i64_field("dislikes", INDEXED | STORED | FAST);
+    schema_builder.add_i64_field("words", INDEXED | STORED | FAST);
+    schema_builder.add_f64_field("wilson", INDEXED | STORED | FAST);
+    schema_builder.add_facet_field("status", INDEXED | STORED);
+    schema_builder.add_facet_field("rating", INDEXED | STORED);
+    schema_builder.add_facet_field("tag", INDEXED | STORED);
+    let schema = schema_builder.build();
+    
+    let index = Index::create_in_ram(schema.clone());
+
+    let mut index_writer = index.writer(100_000_000).unwrap();
+
+    let title = schema.get_field("title").unwrap();
+    let description = schema.get_field("description").unwrap();
+    let author = schema.get_field("author").unwrap();
+    let path = schema.get_field("path").unwrap();
+    let likes = schema.get_field("likes").unwrap();
+    let dislikes = schema.get_field("dislikes").unwrap();
+    let words = schema.get_field("words").unwrap();
+    let wilson = schema.get_field("wilson").unwrap();
+    let status = schema.get_field("status").unwrap();
+    let rating = schema.get_field("rating").unwrap();
+    let tag = schema.get_field("tag").unwrap();
+
+    for (i, line) in file_lines("/home/csos95/.config/fimr/index.json").unwrap().enumerate() {
         let line = line.unwrap();
         if line.len() != 1 {
             // ignore the object key and trailing comma
@@ -137,12 +186,80 @@ async fn main() {
                     break;
                 }
             }
-            let end = line.len() - 1;
+            let end = if line.as_bytes()[line.len()-1] == b'}' {
+                line.len()
+            } else {
+                line.len() - 1
+            };
             let object = &line[start..end];
 
             let book: FimfArchiveBook = serde_json::from_str(object).unwrap();
-            println!("{:#?}", book);
+            //println!("{:#?}", book);
+
+            let mut doc = Document::default();
+            if let Some(t) = book.title {
+                doc.add_text(title, t);
+            }
+            if let Some(d) = book.description {
+                doc.add_text(description, d);
+            }
+
+            doc.add_text(author, book.author.name);
+            doc.add_text(path, book.archive.path);
+            doc.add_i64(likes, book.likes);
+            doc.add_i64(dislikes, book.dislikes);
+            doc.add_i64(words, book.words);
+
+            if book.likes > 0 && book.dislikes >= 0 {
+                let (lower, _upper) = wilson_bounds(book.likes as f64, book.dislikes as f64);
+                doc.add_f64(wilson, lower);
+            } else {
+                doc.add_f64(wilson, 0.0);
+            }
+
+            doc.add_facet(status, &format!("/status/{}", book.status)[..]);
+            doc.add_facet(rating, &format!("/rating/{}", book.rating)[..]);
+
+            for t in book.tags {
+                doc.add_facet(tag, &format!("/tag/{}", t.name));
+            }
+
+            index_writer.add_document(doc);
         }
+    }
+
+    index_writer.commit().unwrap();
+
+    let reader = index
+        .reader_builder()
+        .reload_policy(ReloadPolicy::OnCommit)
+        .try_into().unwrap();
+
+    let searcher = reader.searcher();
+
+    use tantivy::schema::{Term, IndexRecordOption, Facet};
+    use tantivy::query::TermQuery;
+
+    let query_parser = QueryParser::for_index(&index, vec![title, description]);
+    let query = query_parser.parse_query("\"Fallout: Equestria\"").unwrap();
+    let status_query = TermQuery::new(
+        Term::from_facet(status, &Facet::from_path(&["status", "complete"])),
+        IndexRecordOption::Basic
+    );
+
+
+    let boolean_query = tantivy::query::BooleanQuery::new(vec![
+        (tantivy::query::Occur::Must, query),
+        (tantivy::query::Occur::Must, Box::new(status_query)),
+    ]);
+
+    let top_docs: Vec<(i64, tantivy::DocAddress)> = searcher.search(&boolean_query, &TopDocs::with_limit(10).order_by_fast_field(words)).unwrap();
+
+    println!("There are {} results.", top_docs.len());
+    for (score, doc_address) in top_docs {
+        let retrieved_doc = searcher.doc(doc_address).unwrap();
+        //println!("{} {}", score, schema.to_json(&retrieved_doc));
+        println!("{:?} by {:?} is {:?}", retrieved_doc.field_values()[0].value(), retrieved_doc.field_values()[2].value(), retrieved_doc.field_values()[8].value());
     }
 
 
