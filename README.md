@@ -45,6 +45,11 @@ Requirements:
     7. `for_each` to insert each  
     Doing it this way, it should be a stream and not take up as much memory.  
     [Blog post on using streams](https://gendignoux.com/blog/2021/04/01/rust-async-streams-futures-part1.html)
+- [x] fix chapter uuid duplicate  
+    When testing out importing all of fimfarchive, there was a duplicate chapter id.  
+    I thought that filtering out duplicate files by hash, creating a book id from nil and the book file, and creating a chapter id from the book id and chapter contents would prevent collisions, but apparently not.  
+    I forgot about the fact that two chapters could have the same contents.  
+    Added another level of uuid with the chapter index to avoid collisions.
 - [ ] try using tantivy to store fimfarchive index.json data
 - [ ] benchmark the speed/storage size of different zstd levels.
 - [ ] test dictionary trainging for compression  
