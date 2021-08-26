@@ -142,6 +142,27 @@ use tantivy::query::QueryParser;
 use tantivy::schema::*;
 use tantivy::Index;
 use tantivy::ReloadPolicy;
+use tantivy::IndexReader;
+
+fn search(input: String, index: &Index, schema: &Schema, reader: &IndexReader) {
+    let title = schema.get_field("title").unwrap();
+    let description = schema.get_field("description").unwrap();
+
+    let query_parser = QueryParser::for_index(&index, vec![title, description]);
+    let query = query_parser.parse_query(&input).unwrap();
+
+    let searcher = reader.searcher();
+
+    let top_docs: Vec<(f32, tantivy::DocAddress)> = searcher.search(&query, &TopDocs::with_limit(10)).unwrap();
+
+    println!("There are {} results.", top_docs.len());
+    for (score, doc_address) in top_docs {
+        let retrieved_doc = searcher.doc(doc_address).unwrap();
+        //println!("{} {}", score, schema.to_json(&retrieved_doc));
+        println!("{:?} by {:?} is {:?}", retrieved_doc.field_values()[0].value(), retrieved_doc.field_values()[2].value(), retrieved_doc.field_values()[8].value());
+    }
+
+}
 
 #[async_std::main]
 async fn main() {
@@ -175,7 +196,7 @@ async fn main() {
     let rating = schema.get_field("rating").unwrap();
     let tag = schema.get_field("tag").unwrap();
 
-    for (i, line) in file_lines("/home/csos95/.config/fimr/index.json").unwrap().enumerate() {
+    for (i, line) in file_lines("/mnt/ssd/csos95/.config/fimr/fimfarchive/index.json").unwrap().take(10000).enumerate() {
         let line = line.unwrap();
         if line.len() != 1 {
             // ignore the object key and trailing comma
@@ -235,32 +256,39 @@ async fn main() {
         .reload_policy(ReloadPolicy::OnCommit)
         .try_into().unwrap();
 
-    let searcher = reader.searcher();
+    println!("What is your query?");
 
-    use tantivy::schema::{Term, IndexRecordOption, Facet};
-    use tantivy::query::TermQuery;
+    let stdin = std::io::stdin();
+    let input = stdin.lock().lines().next().unwrap().unwrap();
 
-    let query_parser = QueryParser::for_index(&index, vec![title, description]);
-    let query = query_parser.parse_query("\"Fallout: Equestria\"").unwrap();
-    let status_query = TermQuery::new(
-        Term::from_facet(status, &Facet::from_path(&["status", "complete"])),
-        IndexRecordOption::Basic
-    );
+    search(input, &index, &schema, &reader);
 
-
-    let boolean_query = tantivy::query::BooleanQuery::new(vec![
-        (tantivy::query::Occur::Must, query),
-        (tantivy::query::Occur::Must, Box::new(status_query)),
-    ]);
-
-    let top_docs: Vec<(i64, tantivy::DocAddress)> = searcher.search(&boolean_query, &TopDocs::with_limit(10).order_by_fast_field(words)).unwrap();
-
-    println!("There are {} results.", top_docs.len());
-    for (score, doc_address) in top_docs {
-        let retrieved_doc = searcher.doc(doc_address).unwrap();
-        //println!("{} {}", score, schema.to_json(&retrieved_doc));
-        println!("{:?} by {:?} is {:?}", retrieved_doc.field_values()[0].value(), retrieved_doc.field_values()[2].value(), retrieved_doc.field_values()[8].value());
-    }
+//    let searcher = reader.searcher();
+//
+//    use tantivy::schema::{Term, IndexRecordOption, Facet};
+//    use tantivy::query::TermQuery;
+//
+//    let query_parser = QueryParser::for_index(&index, vec![title, description]);
+//    let query = query_parser.parse_query("\"Fallout: Equestria\"").unwrap();
+//    let status_query = TermQuery::new(
+//        Term::from_facet(status, &Facet::from_path(&["status", "complete"])),
+//        IndexRecordOption::Basic
+//    );
+//
+//
+//    let boolean_query = tantivy::query::BooleanQuery::new(vec![
+//        (tantivy::query::Occur::Must, query),
+//        (tantivy::query::Occur::Must, Box::new(status_query)),
+//    ]);
+//
+//    let top_docs: Vec<(i64, tantivy::DocAddress)> = searcher.search(&boolean_query, &TopDocs::with_limit(10).order_by_fast_field(words)).unwrap();
+//
+//    println!("There are {} results.", top_docs.len());
+//    for (score, doc_address) in top_docs {
+//        let retrieved_doc = searcher.doc(doc_address).unwrap();
+//        //println!("{} {}", score, schema.to_json(&retrieved_doc));
+//        println!("{:?} by {:?} is {:?}", retrieved_doc.field_values()[0].value(), retrieved_doc.field_values()[2].value(), retrieved_doc.field_values()[8].value());
+//    }
 
 
     //let pool = SqlitePool::connect("ereader.sqlite").await.unwrap();
