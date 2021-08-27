@@ -343,7 +343,7 @@ impl FimfArchiveSchema {
 }
 
 fn import_fimfarchive<P: AsRef<Path>>(path: P, index: &Index, schema: &FimfArchiveSchema, limit: usize) -> Result<(), Error> {
-    let mut index_writer = index.writer(100_000_000).unwrap();
+    let mut index_writer = index.writer(16_000_000).unwrap();
 
     for (i, line) in file_lines(path).unwrap().take(limit).enumerate() {
         let line = line.unwrap();
@@ -409,9 +409,9 @@ fn import_fimfarchive<P: AsRef<Path>>(path: P, index: &Index, schema: &FimfArchi
 async fn main() {
     let schema = FimfArchiveSchema::new();
     
-    let index = Index::create_in_ram(schema.schema.clone());
+    let index = Index::open_in_dir("index").unwrap();
 
-    import_fimfarchive("/home/csos95/.config/fimr/index.json", &index, &schema, 200_000).unwrap();
+    //import_fimfarchive("/home/csos95/.config/fimr/index.json", &index, &schema, 200_000).unwrap();
 
     let reader = index
         .reader_builder()
