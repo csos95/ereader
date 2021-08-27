@@ -61,11 +61,14 @@ Requirements:
         facet
     - [x] put tags in index
         facet
-    - [ ] search on title and description
-    - [ ] parse out "author:csos95" to search on author
+    - [x] search on title and description
+    - [x] parse out "author(csos95)" to search on author
+        facet term query  
+	if there are multiple authors, make a boolean subquery and use Occur::Should on them  
+        if an author name contains a closing parenthesis, escape it with one backslack
+    - [x] parse out "#(Comedy)" to search on tag
         facet term query
-    - [ ] parse out "#Comedy" to search on tag
-        facet term query
+	use "-#(Comedy)" to exclude a tag
     - [ ] parse out "words>1000" to search on words (do other comparisons too)
         range query
     - [ ] do the same for likes, dislikes, wilson

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod library;
 mod scan;
 
@@ -138,65 +140,187 @@ fn wilson_bounds(positive: f64, negative: f64) -> (f64, f64) {
 }
 
 use tantivy::collector::TopDocs;
-use tantivy::query::QueryParser;
+use tantivy::query::{Occur, TermQuery, BooleanQuery, QueryParser, Query};
 use tantivy::schema::*;
 use tantivy::Index;
 use tantivy::ReloadPolicy;
 use tantivy::IndexReader;
+use regex::Regex;
+use regex::Captures;
 
-fn search(input: String, index: &Index, schema: &Schema, reader: &IndexReader) {
-    let title = schema.get_field("title").unwrap();
-    let description = schema.get_field("description").unwrap();
-
-    let query_parser = QueryParser::for_index(&index, vec![title, description]);
-    let query = query_parser.parse_query(&input).unwrap();
-
+fn search(mut input: String, limit: usize, index: &Index, schema: &FimfArchiveSchema, reader: &IndexReader) {
     let searcher = reader.searcher();
 
-    let top_docs: Vec<(f32, tantivy::DocAddress)> = searcher.search(&query, &TopDocs::with_limit(10)).unwrap();
+    let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+
+    // used by author and tag
+    let paren_escape_re = Regex::new(r#"\\\)"#).unwrap();
+
+    // ===================== AUTHOR =======================
+    let author_re = Regex::new(r#"author\(((?:\\\)|[^\)])+)\)"#).unwrap();
+    let mut authors = Vec::new();
+
+    input = author_re.replace_all(&input, |caps: &Captures| {
+        let name = paren_escape_re.replace_all(&caps[1], |caps: &Captures| {
+            caps[1].to_string()
+        });
+        authors.push(name.to_string());
+        String::new()
+    }).to_string();
+
+    if authors.len() == 1 {
+        let facet = Facet::from_path(&["author", &authors[0]]);
+        println!("{}", facet);
+        let term = Term::from_facet(schema.author, &facet);
+        let query = TermQuery::new(term, IndexRecordOption::Basic);
+        queries.push((Occur::Must, Box::new(query)));
+    } else if authors.len() > 1 {
+        let mut author_queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+
+        for author in authors {
+            let facet = Facet::from_path(&["author", &author]);
+            println!("{}", facet);
+            let term = Term::from_facet(schema.author, &facet);
+            let query = TermQuery::new(term, IndexRecordOption::Basic);
+            author_queries.push((Occur::Should, Box::new(query)));
+        }
+
+        queries.push((Occur::Must, Box::new(BooleanQuery::new(author_queries))));
+    }
+
+    // ===================== TAG ==========================
+    let mut all_tag_queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+    // This first block is for excluded tags
+    let ex_tag_re = Regex::new(r#"-#\(((?:\\\)|[^\)])+)\)"#).unwrap();
+    let mut ex_tags = Vec::new();
+
+    input = ex_tag_re.replace_all(&input, |caps: &Captures| {
+        let name = paren_escape_re.replace_all(&caps[1], |caps: &Captures| caps[1].to_string());
+        ex_tags.push(name.to_string());
+        String::new()
+    }).to_string();
+
+    if ex_tags.len() != 0 {
+        for ex_tag in ex_tags {
+            let facet = Facet::from_path(&["tag", &ex_tag]);
+            println!("ex {}", facet);
+            let term = Term::from_facet(schema.tag, &facet);
+            let query = TermQuery::new(term, IndexRecordOption::Basic);
+            //ex_tag_queries.push((Occur::MustNot, Box::new(query)));
+            all_tag_queries.push((Occur::MustNot, Box::new(query)));
+        }
+    }
+
+    // This second block is for required tags
+    let tag_re = Regex::new(r#"#\(((?:\\\)|[^\)])+)\)"#).unwrap();
+    let mut tags = Vec::new();
+
+    input = tag_re.replace_all(&input, |caps: &Captures| {
+        let name = paren_escape_re.replace_all(&caps[1], |caps: &Captures| caps[1].to_string());
+        tags.push(name.to_string());
+        String::new()
+    }).to_string();
+
+    if tags.len() != 0 {
+        for tag in tags {
+            let facet = Facet::from_path(&["tag", &tag]);
+            println!("{}", facet);
+            let term = Term::from_facet(schema.tag, &facet);
+            let query = TermQuery::new(term, IndexRecordOption::Basic);
+            //tag_queries.push((Occur::Must, Box::new(query)));
+            all_tag_queries.push((Occur::Must, Box::new(query)));
+        }
+    }
+
+    // put the excluded and required tags together into one query
+    if all_tag_queries.len() != 0 {
+        queries.push((Occur::Must, Box::new(BooleanQuery::new(all_tag_queries))));
+    }
+    // ===================== WORDS ========================
+    // ===================== LIKES ========================
+    // ===================== DISLIKES =====================
+    // ===================== WILSON =======================
+    input = input.trim_start().trim_end().to_string();
+    println!("input: [{}]", input);
+    if input.len() != 0 {
+        let query_parser = QueryParser::for_index(&index, vec![schema.title, schema.description]);
+        let text_query = query_parser.parse_query(&input).unwrap();
+    
+        queries.push((Occur::Must, Box::new(text_query)));
+    }
+
+    let query = BooleanQuery::new(queries);
+    println!("{:?}", query);
+
+    let top_docs: Vec<(f32, tantivy::DocAddress)> = searcher.search(&query, &TopDocs::with_limit(limit)).unwrap();
 
     println!("There are {} results.", top_docs.len());
     for (score, doc_address) in top_docs {
         let retrieved_doc = searcher.doc(doc_address).unwrap();
-        //println!("{} {}", score, schema.to_json(&retrieved_doc));
-        println!("{:?} by {:?} is {:?}", retrieved_doc.field_values()[0].value(), retrieved_doc.field_values()[2].value(), retrieved_doc.field_values()[8].value());
+        //println!("{} {}", score, schema.schema.to_json(&retrieved_doc));
+        println!(
+            "{:?} by {:?} tags {:?}",
+            retrieved_doc.get_first(schema.title).unwrap().text().unwrap(),
+            retrieved_doc.get_first(schema.author).unwrap().path().unwrap(),
+            retrieved_doc.get_all(schema.tag).map(|f| f.path().unwrap()).collect::<Vec<String>>(),
+        );
     }
 
 }
 
-#[async_std::main]
-async fn main() {
-    let mut schema_builder = Schema::builder();
-    schema_builder.add_text_field("title", TEXT | STORED);
-    schema_builder.add_text_field("description", TEXT | STORED);
-    schema_builder.add_text_field("author", TEXT | STORED);
-    schema_builder.add_text_field("path", TEXT | STORED);
-    schema_builder.add_i64_field("likes", INDEXED | STORED | FAST);
-    schema_builder.add_i64_field("dislikes", INDEXED | STORED | FAST);
-    schema_builder.add_i64_field("words", INDEXED | STORED | FAST);
-    schema_builder.add_f64_field("wilson", INDEXED | STORED | FAST);
-    schema_builder.add_facet_field("status", INDEXED | STORED);
-    schema_builder.add_facet_field("rating", INDEXED | STORED);
-    schema_builder.add_facet_field("tag", INDEXED | STORED);
-    let schema = schema_builder.build();
-    
-    let index = Index::create_in_ram(schema.clone());
+struct FimfArchiveSchema {
+    schema: Schema,
+    title: Field,
+    description: Field,
+    author: Field,
+    path: Field,
+    likes: Field,
+    dislikes: Field,
+    words: Field,
+    wilson: Field,
+    status: Field,
+    rating: Field,
+    tag: Field,
+}
 
+impl FimfArchiveSchema {
+
+    fn new() -> Self {
+        let mut schema_builder = Schema::builder();
+        schema_builder.add_text_field("title", TEXT | STORED);
+        schema_builder.add_text_field("description", TEXT | STORED);
+        schema_builder.add_facet_field("author", INDEXED | STORED);
+        schema_builder.add_text_field("path", TEXT | STORED);
+        schema_builder.add_i64_field("likes", INDEXED | STORED | FAST);
+        schema_builder.add_i64_field("dislikes", INDEXED | STORED | FAST);
+        schema_builder.add_i64_field("words", INDEXED | STORED | FAST);
+        schema_builder.add_f64_field("wilson", INDEXED | STORED | FAST);
+        schema_builder.add_facet_field("status", INDEXED | STORED);
+        schema_builder.add_facet_field("rating", INDEXED | STORED);
+        schema_builder.add_facet_field("tag", INDEXED | STORED);
+        let schema = schema_builder.build();
+
+        FimfArchiveSchema {
+            schema: schema.clone(),
+            title: schema.get_field("title").unwrap(),
+            description: schema.get_field("description").unwrap(),
+            author: schema.get_field("author").unwrap(),
+            path: schema.get_field("path").unwrap(),
+            likes: schema.get_field("likes").unwrap(),
+            dislikes: schema.get_field("dislikes").unwrap(),
+            words: schema.get_field("words").unwrap(),
+            wilson: schema.get_field("wilson").unwrap(),
+            status: schema.get_field("status").unwrap(),
+            rating: schema.get_field("rating").unwrap(),
+            tag: schema.get_field("tag").unwrap(),
+        }
+    }
+}
+
+fn import_fimfarchive<P: AsRef<Path>>(path: P, index: &Index, schema: &FimfArchiveSchema, limit: usize) -> Result<(), Error> {
     let mut index_writer = index.writer(100_000_000).unwrap();
 
-    let title = schema.get_field("title").unwrap();
-    let description = schema.get_field("description").unwrap();
-    let author = schema.get_field("author").unwrap();
-    let path = schema.get_field("path").unwrap();
-    let likes = schema.get_field("likes").unwrap();
-    let dislikes = schema.get_field("dislikes").unwrap();
-    let words = schema.get_field("words").unwrap();
-    let wilson = schema.get_field("wilson").unwrap();
-    let status = schema.get_field("status").unwrap();
-    let rating = schema.get_field("rating").unwrap();
-    let tag = schema.get_field("tag").unwrap();
-
-    for (i, line) in file_lines("/mnt/ssd/csos95/.config/fimr/fimfarchive/index.json").unwrap().take(10000).enumerate() {
+    for (i, line) in file_lines(path).unwrap().take(limit).enumerate() {
         let line = line.unwrap();
         if line.len() != 1 {
             // ignore the object key and trailing comma
@@ -215,34 +339,35 @@ async fn main() {
             let object = &line[start..end];
 
             let book: FimfArchiveBook = serde_json::from_str(object).unwrap();
-            //println!("{:#?}", book);
 
             let mut doc = Document::default();
             if let Some(t) = book.title {
-                doc.add_text(title, t);
+                doc.add_text(schema.title, t);
+            } else {
+                doc.add_text(schema.title, "UNTITLED");
             }
             if let Some(d) = book.description {
-                doc.add_text(description, d);
+                doc.add_text(schema.description, d);
             }
 
-            doc.add_text(author, book.author.name);
-            doc.add_text(path, book.archive.path);
-            doc.add_i64(likes, book.likes);
-            doc.add_i64(dislikes, book.dislikes);
-            doc.add_i64(words, book.words);
+            doc.add_facet(schema.author, &format!("/author/{}", book.author.name));
+            doc.add_text(schema.path, book.archive.path);
+            doc.add_i64(schema.likes, book.likes);
+            doc.add_i64(schema.dislikes, book.dislikes);
+            doc.add_i64(schema.words, book.words);
 
             if book.likes > 0 && book.dislikes >= 0 {
                 let (lower, _upper) = wilson_bounds(book.likes as f64, book.dislikes as f64);
-                doc.add_f64(wilson, lower);
+                doc.add_f64(schema.wilson, lower);
             } else {
-                doc.add_f64(wilson, 0.0);
+                doc.add_f64(schema.wilson, 0.0);
             }
 
-            doc.add_facet(status, &format!("/status/{}", book.status)[..]);
-            doc.add_facet(rating, &format!("/rating/{}", book.rating)[..]);
+            doc.add_facet(schema.status, &format!("/status/{}", book.status));
+            doc.add_facet(schema.rating, &format!("/rating/{}", book.rating));
 
             for t in book.tags {
-                doc.add_facet(tag, &format!("/tag/{}", t.name));
+                doc.add_facet(schema.tag, &format!("/tag/{}", t.name));
             }
 
             index_writer.add_document(doc);
@@ -250,6 +375,16 @@ async fn main() {
     }
 
     index_writer.commit().unwrap();
+    Ok(())
+}
+
+#[async_std::main]
+async fn main() {
+    let schema = FimfArchiveSchema::new();
+    
+    let index = Index::create_in_ram(schema.schema.clone());
+
+    import_fimfarchive("/home/csos95/.config/fimr/index.json", &index, &schema, 100).unwrap();
 
     let reader = index
         .reader_builder()
@@ -261,35 +396,7 @@ async fn main() {
     let stdin = std::io::stdin();
     let input = stdin.lock().lines().next().unwrap().unwrap();
 
-    search(input, &index, &schema, &reader);
-
-//    let searcher = reader.searcher();
-//
-//    use tantivy::schema::{Term, IndexRecordOption, Facet};
-//    use tantivy::query::TermQuery;
-//
-//    let query_parser = QueryParser::for_index(&index, vec![title, description]);
-//    let query = query_parser.parse_query("\"Fallout: Equestria\"").unwrap();
-//    let status_query = TermQuery::new(
-//        Term::from_facet(status, &Facet::from_path(&["status", "complete"])),
-//        IndexRecordOption::Basic
-//    );
-//
-//
-//    let boolean_query = tantivy::query::BooleanQuery::new(vec![
-//        (tantivy::query::Occur::Must, query),
-//        (tantivy::query::Occur::Must, Box::new(status_query)),
-//    ]);
-//
-//    let top_docs: Vec<(i64, tantivy::DocAddress)> = searcher.search(&boolean_query, &TopDocs::with_limit(10).order_by_fast_field(words)).unwrap();
-//
-//    println!("There are {} results.", top_docs.len());
-//    for (score, doc_address) in top_docs {
-//        let retrieved_doc = searcher.doc(doc_address).unwrap();
-//        //println!("{} {}", score, schema.to_json(&retrieved_doc));
-//        println!("{:?} by {:?} is {:?}", retrieved_doc.field_values()[0].value(), retrieved_doc.field_values()[2].value(), retrieved_doc.field_values()[8].value());
-//    }
-
+    search(input, 20, &index, &schema, &reader);
 
     //let pool = SqlitePool::connect("ereader.sqlite").await.unwrap();
     //let start = chrono::Utc::now();
@@ -535,7 +642,7 @@ fn view_chapter(s: &mut Cursive, chapter: &Chapter, progress: Option<f32>) {
     let cursor = std::io::Cursor::new(chapter.content.clone());
     let content = zstd::stream::decode_all(cursor).unwrap();
     let content_str = String::from_utf8(content).unwrap();
-    let mut view = MarkupView::html(&content_str[..]);
+    let mut view = MarkupView::html(&content_str);
     view.on_link_focus(|_s, _url| {});
     view.on_link_select(|_s, _url| {});
 
@@ -634,7 +741,7 @@ fn view_bookmarks(s: &mut Cursive, bookmarks: &[Bookmark], books: &[Book]) {
 
     for i in 0..bookmarks.len() {
         view.add_item(
-            &books[i].title[..],
+            &books[i].title,
             (bookmarks[i].chapter_id, bookmarks[i].progress),
         );
     }

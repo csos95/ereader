@@ -762,6 +762,7 @@ dependencies = [
  "itertools",
  "once_cell",
  "percent-encoding",
+ "regex",
  "scraper",
  "serde",
  "serde_json",
