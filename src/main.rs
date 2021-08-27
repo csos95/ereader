@@ -348,6 +348,8 @@ fn import_fimfarchive<P: AsRef<Path>>(path: P, index: &Index, schema: &FimfArchi
             }
             if let Some(d) = book.description {
                 doc.add_text(schema.description, d);
+            } else {
+                doc.add_text(schema.description, "");
             }
 
             doc.add_facet(schema.author, &format!("/author/{}", book.author.name));
@@ -384,7 +386,7 @@ async fn main() {
     
     let index = Index::create_in_ram(schema.schema.clone());
 
-    import_fimfarchive("/home/csos95/.config/fimr/index.json", &index, &schema, 100).unwrap();
+    import_fimfarchive("/home/csos95/.config/fimr/index.json", &index, &schema, 200_000).unwrap();
 
     let reader = index
         .reader_builder()
@@ -396,7 +398,13 @@ async fn main() {
     let stdin = std::io::stdin();
     let input = stdin.lock().lines().next().unwrap().unwrap();
 
-    search(input, 20, &index, &schema, &reader);
+    println!("Results limit?");
+
+    let stdin = std::io::stdin();
+    let limit_str = stdin.lock().lines().next().unwrap().unwrap();
+    let limit: usize = limit_str.parse().expect("expected a usize");
+
+    search(input, limit, &index, &schema, &reader);
 
     //let pool = SqlitePool::connect("ereader.sqlite").await.unwrap();
     //let start = chrono::Utc::now();
