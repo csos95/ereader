@@ -211,6 +211,31 @@ fn search(mut input: String, limit: usize, index: &Index, schema: &FimfArchiveSc
         }
     }
 
+    // This second block is for "or" tags (at least one of them must be present)
+    let or_tag_re = Regex::new(r#"~#\(((?:\\\)|[^\)])+)\)"#).unwrap();
+    let mut or_tags = Vec::new();
+
+    input = or_tag_re.replace_all(&input, |caps: &Captures| {
+        let name = paren_escape_re.replace_all(&caps[1], |caps: &Captures| caps[1].to_string());
+        or_tags.push(name.to_string());
+        String::new()
+    }).to_string();
+
+    if or_tags.len() != 0 {
+        let mut or_tag_queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+
+        for or_tag in or_tags {
+            let facet = Facet::from_path(&["tag", &or_tag]);
+            println!("or {}", facet);
+            let term = Term::from_facet(schema.tag, &facet);
+            let query = TermQuery::new(term, IndexRecordOption::Basic);
+            or_tag_queries.push((Occur::Should, Box::new(query)));
+            //all_tag_queries.push((Occur::Should, Box::new(query)));
+        }
+
+        all_tag_queries.push((Occur::Must, Box::new(BooleanQuery::new(or_tag_queries))));
+    }
+
     // This second block is for required tags
     let tag_re = Regex::new(r#"#\(((?:\\\)|[^\)])+)\)"#).unwrap();
     let mut tags = Vec::new();

@@ -67,8 +67,9 @@ Requirements:
 	if there are multiple authors, make a boolean subquery and use Occur::Should on them  
         if an author name contains a closing parenthesis, escape it with one backslack
     - [x] parse out "#(Comedy)" to search on tag
-        facet term query
-	use "-#(Comedy)" to exclude a tag
+        facet term query  
+	use "-#(Comedy)" to exclude a tag  
+	use "~#(Random) ~#(Comedy) ~#(Adventure)" to do "or" tags (at least on of them must appear)
     - [ ] parse out "words>1000" to search on words (do other comparisons too)
         range query
     - [ ] do the same for likes, dislikes, wilson
