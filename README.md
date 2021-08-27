@@ -161,7 +161,7 @@ Requirements:
     - [x] store table of contents in database
 - gutenberg
     - [ ] download catalog file from project gutenberg
-    - [ ] parse and store metadata/epub download
+    - [ ] parse using rio_xml and store metadata/epub download
     - [ ] search for books
     - [ ] copy epub to library
 - subcommands
