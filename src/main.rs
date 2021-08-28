@@ -148,15 +148,11 @@ use tantivy::IndexReader;
 use regex::Regex;
 use regex::Captures;
 
-fn search(mut input: String, limit: usize, index: &Index, schema: &FimfArchiveSchema, reader: &IndexReader) {
-    let searcher = reader.searcher();
-
+fn authors(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occur, Box<dyn Query>)>) {
     let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
 
-    // used by author and tag
     let paren_escape_re = Regex::new(r#"\\\)"#).unwrap();
 
-    // ===================== AUTHOR =======================
     let author_re = Regex::new(r#"author\(((?:\\\)|[^\)])+)\)"#).unwrap();
     let mut authors = Vec::new();
 
@@ -188,7 +184,14 @@ fn search(mut input: String, limit: usize, index: &Index, schema: &FimfArchiveSc
         queries.push((Occur::Must, Box::new(BooleanQuery::new(author_queries))));
     }
 
-    // ===================== TAG ==========================
+    (input, queries)
+}
+
+fn tags(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occur, Box<dyn Query>)>) {
+    let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+
+    let paren_escape_re = Regex::new(r#"\\\)"#).unwrap();
+
     let mut all_tag_queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
     // This first block is for excluded tags
     let ex_tag_re = Regex::new(r#"-#\(((?:\\\)|[^\)])+)\)"#).unwrap();
@@ -261,10 +264,31 @@ fn search(mut input: String, limit: usize, index: &Index, schema: &FimfArchiveSc
     if all_tag_queries.len() != 0 {
         queries.push((Occur::Must, Box::new(BooleanQuery::new(all_tag_queries))));
     }
+
+    (input, queries)
+}
+
+fn search(mut input: String, limit: usize, index: &Index, schema: &FimfArchiveSchema, reader: &IndexReader) {
+    let searcher = reader.searcher();
+
+    let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+
+    // used by author and tag
+    let paren_escape_re = Regex::new(r#"\\\)"#).unwrap();
+
+    let (mut input, mut author_queries) = authors(input, schema);
+    queries.append(&mut author_queries);
+
+    let (mut input, mut tag_queries) = tags(input, schema);
+    queries.append(&mut tag_queries);
+
     // ===================== WORDS ========================
     // ===================== LIKES ========================
     // ===================== DISLIKES =====================
     // ===================== WILSON =======================
+    // ===================== STATUS =======================
+    // ===================== RATING =======================
+    // ===================== ORDER ========================
     input = input.trim_start().trim_end().to_string();
     println!("input: [{}]", input);
     if input.len() != 0 {
