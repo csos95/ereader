@@ -275,8 +275,10 @@ fn words(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occur, 
 
     let mut lower = 0;
     let mut upper = i64::MAX;
+    let mut filter_words = false;
 
     input = word_re.replace_all(&input, |caps: &Captures| {
+        filter_words = true;
         let value = caps[2].parse::<i64>().unwrap();
         match &caps[1] {
             ">=" => if value > lower {
@@ -286,19 +288,20 @@ fn words(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occur, 
                 upper = value+1;
             },
             ">" => if value+1 > lower {
-                lower = value+1
+                lower = value+1;
             },
             "<" => if value < upper {
-                upper = value
+                upper = value;
             },
             _ => unreachable!(),
         };
         String::new()
     }).to_string();
 
-    
-    let word_query = RangeQuery::new_i64(schema.words, lower..upper);
-    queries.push((Occur::Must, Box::new(word_query)));
+    if filter_words {
+        let word_query = RangeQuery::new_i64(schema.words, lower..upper);
+        queries.push((Occur::Must, Box::new(word_query)));
+    }
 
     (input, queries)
 }
@@ -310,8 +313,10 @@ fn likes(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occur, 
 
     let mut lower = 0;
     let mut upper = i64::MAX;
+    let mut filter_likes = false;
 
     input = like_re.replace_all(&input, |caps: &Captures| {
+        filter_likes = true;
         let value = caps[2].parse::<i64>().unwrap();
         match &caps[1] {
             ">=" => if value > lower {
@@ -321,19 +326,20 @@ fn likes(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occur, 
                 upper = value+1;
             },
             ">" => if value+1 > lower {
-                lower = value+1
+                lower = value+1;
             },
             "<" => if value < upper {
-                upper = value
+                upper = value;
             },
             _ => unreachable!(),
         };
         String::new()
     }).to_string();
 
-    
-    let like_query = RangeQuery::new_i64(schema.likes, lower..upper);
-    queries.push((Occur::Must, Box::new(like_query)));
+    if filter_likes {
+        let like_query = RangeQuery::new_i64(schema.likes, lower..upper);
+        queries.push((Occur::Must, Box::new(like_query)));
+    }
 
     (input, queries)
 }
@@ -345,8 +351,10 @@ fn dislikes(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occu
 
     let mut lower = 0;
     let mut upper = i64::MAX;
+    let mut filter_dislikes = false;
 
     input = dislike_re.replace_all(&input, |caps: &Captures| {
+        filter_dislikes = true;
         let value = caps[2].parse::<i64>().unwrap();
         match &caps[1] {
             ">=" => if value > lower {
@@ -356,19 +364,118 @@ fn dislikes(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occu
                 upper = value+1;
             },
             ">" => if value+1 > lower {
-                lower = value+1
+                lower = value+1;
             },
             "<" => if value < upper {
-                upper = value
+                upper = value;
             },
             _ => unreachable!(),
         };
         String::new()
     }).to_string();
 
-    
-    let dislike_query = RangeQuery::new_i64(schema.dislikes, lower..upper);
-    queries.push((Occur::Must, Box::new(dislike_query)));
+    if filter_dislikes {
+        let dislike_query = RangeQuery::new_i64(schema.dislikes, lower..upper);
+        queries.push((Occur::Must, Box::new(dislike_query)));
+    }
+
+    (input, queries)
+}
+
+fn wilson(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occur, Box<dyn Query>)>) {
+    let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+
+    let wilson_re = Regex::new(r#"wilson(>=|<=|>|<)([01].[0-9]+)"#).unwrap();
+
+    let mut lower = 0.0;
+    let mut upper = 1.0;
+    let mut lower_inc = false;
+    let mut upper_inc = false;
+    let mut filter_wilson = false;
+
+    input = wilson_re.replace_all(&input, |caps: &Captures| {
+        filter_wilson = true;
+        let value = caps[2].parse::<f64>().unwrap();
+        match &caps[1] {
+            ">=" => if value > lower {
+                lower = value;
+                lower_inc = true;
+            },
+            "<=" => if value < upper {
+                upper = value;
+                upper_inc = true;
+            },
+            ">" => if value > lower || (value == lower && lower_inc) {
+                lower = value;
+                lower_inc = false;
+            },
+            "<" => if value < upper || (value == upper && upper_inc) {
+                upper = value;
+                upper_inc = false;
+            },
+            _ => unreachable!(),
+        };
+        String::new()
+    }).to_string();
+
+    if filter_wilson {
+        let lower = if lower_inc {
+            std::ops::Bound::Included(lower)
+        } else {
+            std::ops::Bound::Excluded(lower)
+        };
+        let upper = if upper_inc {
+            std::ops::Bound::Included(upper)
+        } else {
+            std::ops::Bound::Excluded(upper)
+        };
+        let wilson_query = RangeQuery::new_f64_bounds(schema.wilson, lower, upper);
+        queries.push((Occur::Must, Box::new(wilson_query)));
+    }
+
+    (input, queries)
+}
+
+fn rating(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occur, Box<dyn Query>)>) {
+    let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+
+    let rating_re = Regex::new(r#"rating:(everyone|teen|mature)"#).unwrap();
+    let mut ratings = Vec::new();
+
+    input = rating_re.replace_all(&input, |caps: &Captures| {
+        ratings.push(caps[1].to_string());
+        String::new()
+    }).to_string();
+
+    for rating in ratings {
+        let facet = Facet::from_path(&["rating", &rating]);
+        println!("{}", facet);
+        let term = Term::from_facet(schema.rating, &facet);
+        let query = TermQuery::new(term, IndexRecordOption::Basic);
+        queries.push((Occur::Must, Box::new(query)));
+    }
+
+    (input, queries)
+}
+
+fn status(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occur, Box<dyn Query>)>) {
+    let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+
+    let status_re = Regex::new(r#"status:(incomplete|complete|hiatus|cancelled)"#).unwrap();
+    let mut statuses = Vec::new();
+
+    input = status_re.replace_all(&input, |caps: &Captures| {
+        statuses.push(caps[1].to_string());
+        String::new()
+    }).to_string();
+
+    for status in statuses {
+        let facet = Facet::from_path(&["status", &status]);
+        println!("{}", facet);
+        let term = Term::from_facet(schema.status, &facet);
+        let query = TermQuery::new(term, IndexRecordOption::Basic);
+        queries.push((Occur::Must, Box::new(query)));
+    }
 
     (input, queries)
 }
@@ -421,9 +528,14 @@ fn search(input: String, limit: usize, index: &Index, schema: &FimfArchiveSchema
     let (input, mut dislike_queries) = dislikes(input, schema);
     queries.append(&mut dislike_queries);
 
-    // ===================== WILSON =======================
-    // ===================== STATUS =======================
-    // ===================== RATING =======================
+    let (input, mut wilson_queries) = wilson(input, schema);
+    queries.append(&mut wilson_queries);
+
+    let (input, mut rating_queries) = rating(input, schema);
+    queries.append(&mut rating_queries);
+
+    let (input, mut status_queries) = status(input, schema);
+    queries.append(&mut status_queries);
 
     let (input, order) = order(input);
 
@@ -495,13 +607,15 @@ fn search(input: String, limit: usize, index: &Index, schema: &FimfArchiveSchema
         let retrieved_doc = searcher.doc(doc_address).unwrap();
         //println!("{} {}", score, schema.schema.to_json(&retrieved_doc));
         println!(
-            "{:?} by {:?} words {:?} likes {:?} dislikes {:?} wilson {:?}",
+            "{:?} by {:?} words {:?} likes {:?} dislikes {:?} wilson {:?} status {:?} rating {:?}",
             retrieved_doc.get_first(schema.title).unwrap().text().unwrap(),
             retrieved_doc.get_first(schema.author).unwrap().path().unwrap(),
             retrieved_doc.get_first(schema.words).unwrap().i64_value().unwrap(),
             retrieved_doc.get_first(schema.likes).unwrap().i64_value().unwrap(),
             retrieved_doc.get_first(schema.dislikes).unwrap().i64_value().unwrap(),
             retrieved_doc.get_first(schema.wilson).unwrap().f64_value().unwrap(),
+            retrieved_doc.get_first(schema.status).unwrap().path().unwrap(),
+            retrieved_doc.get_first(schema.rating).unwrap().path().unwrap(),
             //retrieved_doc.get_all(schema.tag).map(|f| f.path().unwrap()).collect::<Vec<String>>(),
         );
     }
@@ -624,10 +738,10 @@ fn import_fimfarchive<P: AsRef<Path>>(path: P, index: &Index, schema: &FimfArchi
 async fn main() {
     let schema = FimfArchiveSchema::new();
     
-    //let index = Index::open_in_dir("index").unwrap();
+    let index = Index::open_in_dir("index").unwrap();
 
-    let index = Index::create_in_dir("index", schema.schema.clone()).unwrap();
-    import_fimfarchive("index.json", &index, &schema, 200_000).unwrap();
+    // let index = Index::create_in_dir("index", schema.schema.clone()).unwrap();
+    // import_fimfarchive("index.json", &index, &schema, 200_000).unwrap();
 
     let reader = index
         .reader_builder()

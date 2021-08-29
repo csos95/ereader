@@ -50,7 +50,7 @@ Requirements:
     I thought that filtering out duplicate files by hash, creating a book id from nil and the book file, and creating a chapter id from the book id and chapter contents would prevent collisions, but apparently not.  
     I forgot about the fact that two chapters could have the same contents.  
     Added another level of uuid with the chapter index to avoid collisions.
-- [ ] try using tantivy to store fimfarchive index.json data
+- [x] try using tantivy to store fimfarchive index.json data
     - [x] load data from index.json
     - [x] make tantivy index
     - [x] put title, author, description, path in tantivy index
@@ -70,13 +70,13 @@ Requirements:
         facet term query  
 	use "-#(Comedy)" to exclude a tag  
 	use "~#(Random) ~#(Comedy) ~#(Adventure)" to do "or" tags (at least on of them must appear)
-    - [ ] parse out "words>1000" to search on words (do other comparisons too)
+    - [x] parse out "words>1000" to search on words (do other comparisons too)
         range query
-    - [ ] do the same for likes, dislikes, wilson
+    - [x] do the same for likes, dislikes, wilson
         range query
-    - [ ] parse out "rating:Everyone" and "status:Complete" to search on rating and status
+    - [x] parse out "rating:everyone" and "status:complete" to search on rating and status
         facet term query
-    - [ ] parse out "order:likes" to sort by likes (do same for dislikes, wilson, words)
+    - [x] parse out "order:likes" to sort by likes (do same for dislikes, wilson, words)
         use TopDocs::order_by_fast_field
 - [ ] benchmark the speed/storage size of different zstd levels.
 - [ ] test dictionary trainging for compression  
