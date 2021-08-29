@@ -7,7 +7,7 @@ use async_std::task;
 use cursive::traits::Scrollable;
 use cursive::view::{Nameable, Resizable};
 use cursive::views::{Dialog, ScrollView, SelectView, TextView};
-use cursive::{Cursive, CursiveExt, View, XY};
+use cursive::{Cursive, View, XY};
 use cursive_markup::html::RichRenderer;
 use cursive_markup::MarkupView;
 use library::{Book, Bookmark, Chapter, Toc};
@@ -140,7 +140,7 @@ fn wilson_bounds(positive: f64, negative: f64) -> (f64, f64) {
 }
 
 use tantivy::collector::TopDocs;
-use tantivy::query::{Occur, TermQuery, BooleanQuery, QueryParser, Query};
+use tantivy::query::{Occur, TermQuery, BooleanQuery, QueryParser, Query, RangeQuery};
 use tantivy::schema::*;
 use tantivy::Index;
 use tantivy::ReloadPolicy;
@@ -268,28 +268,166 @@ fn tags(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occur, B
     (input, queries)
 }
 
-fn search(mut input: String, limit: usize, index: &Index, schema: &FimfArchiveSchema, reader: &IndexReader) {
+fn words(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occur, Box<dyn Query>)>) {
+    let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+
+    let word_re = Regex::new(r#"words(>=|<=|>|<)([0-9]+)"#).unwrap();
+
+    let mut lower = 0;
+    let mut upper = i64::MAX;
+
+    input = word_re.replace_all(&input, |caps: &Captures| {
+        let value = caps[2].parse::<i64>().unwrap();
+        match &caps[1] {
+            ">=" => if value > lower {
+                lower = value;
+            },
+            "<=" => if value+1 < upper {
+                upper = value+1;
+            },
+            ">" => if value+1 > lower {
+                lower = value+1
+            },
+            "<" => if value < upper {
+                upper = value
+            },
+            _ => unreachable!(),
+        };
+        String::new()
+    }).to_string();
+
+    
+    let word_query = RangeQuery::new_i64(schema.words, lower..upper);
+    queries.push((Occur::Must, Box::new(word_query)));
+
+    (input, queries)
+}
+
+fn likes(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occur, Box<dyn Query>)>) {
+    let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+
+    let like_re = Regex::new(r#"likes(>=|<=|>|<)([0-9]+)"#).unwrap();
+
+    let mut lower = 0;
+    let mut upper = i64::MAX;
+
+    input = like_re.replace_all(&input, |caps: &Captures| {
+        let value = caps[2].parse::<i64>().unwrap();
+        match &caps[1] {
+            ">=" => if value > lower {
+                lower = value;
+            },
+            "<=" => if value+1 < upper {
+                upper = value+1;
+            },
+            ">" => if value+1 > lower {
+                lower = value+1
+            },
+            "<" => if value < upper {
+                upper = value
+            },
+            _ => unreachable!(),
+        };
+        String::new()
+    }).to_string();
+
+    
+    let like_query = RangeQuery::new_i64(schema.likes, lower..upper);
+    queries.push((Occur::Must, Box::new(like_query)));
+
+    (input, queries)
+}
+
+fn dislikes(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occur, Box<dyn Query>)>) {
+    let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+
+    let dislike_re = Regex::new(r#"dislikes(>=|<=|>|<)([0-9]+)"#).unwrap();
+
+    let mut lower = 0;
+    let mut upper = i64::MAX;
+
+    input = dislike_re.replace_all(&input, |caps: &Captures| {
+        let value = caps[2].parse::<i64>().unwrap();
+        match &caps[1] {
+            ">=" => if value > lower {
+                lower = value;
+            },
+            "<=" => if value+1 < upper {
+                upper = value+1;
+            },
+            ">" => if value+1 > lower {
+                lower = value+1
+            },
+            "<" => if value < upper {
+                upper = value
+            },
+            _ => unreachable!(),
+        };
+        String::new()
+    }).to_string();
+
+    
+    let dislike_query = RangeQuery::new_i64(schema.dislikes, lower..upper);
+    queries.push((Occur::Must, Box::new(dislike_query)));
+
+    (input, queries)
+}
+
+enum Order {
+    Relevancy,
+    Words,
+    Likes,
+    Dislikes,
+    Wilson,
+}
+
+fn order(mut input: String) -> (String, Order) {
+    let word_re = Regex::new(r#"order:(relevancy|words|likes|dislikes|wilson)"#).unwrap();
+
+    let mut order = Order::Relevancy;
+
+    input = word_re.replace_all(&input, |caps: &Captures| {
+        order = match &caps[1] {
+            "relevancy" => Order::Relevancy,
+            "words" => Order::Words,
+            "likes" => Order::Likes,
+            "dislikes" => Order::Dislikes,
+            "wilson" => Order::Wilson,
+            _ => unreachable!(),
+        };
+        String::new()
+    }).to_string();
+
+    (input, order)
+}
+
+fn search(input: String, limit: usize, index: &Index, schema: &FimfArchiveSchema, reader: &IndexReader) {
     let searcher = reader.searcher();
 
     let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
 
-    // used by author and tag
-    let paren_escape_re = Regex::new(r#"\\\)"#).unwrap();
-
-    let (mut input, mut author_queries) = authors(input, schema);
+    let (input, mut author_queries) = authors(input, schema);
     queries.append(&mut author_queries);
 
-    let (mut input, mut tag_queries) = tags(input, schema);
+    let (input, mut tag_queries) = tags(input, schema);
     queries.append(&mut tag_queries);
 
-    // ===================== WORDS ========================
-    // ===================== LIKES ========================
-    // ===================== DISLIKES =====================
+    let (input, mut word_queries) = words(input, schema);
+    queries.append(&mut word_queries);
+
+    let (input, mut like_queries) = likes(input, schema);
+    queries.append(&mut like_queries);
+
+    let (input, mut dislike_queries) = dislikes(input, schema);
+    queries.append(&mut dislike_queries);
+
     // ===================== WILSON =======================
     // ===================== STATUS =======================
     // ===================== RATING =======================
-    // ===================== ORDER ========================
-    input = input.trim_start().trim_end().to_string();
+
+    let (input, order) = order(input);
+
+    let input = input.trim_start().trim_end().to_string();
     println!("input: [{}]", input);
     if input.len() != 0 {
         let query_parser = QueryParser::for_index(&index, vec![schema.title, schema.description]);
@@ -300,18 +438,71 @@ fn search(mut input: String, limit: usize, index: &Index, schema: &FimfArchiveSc
 
     let query = BooleanQuery::new(queries);
     println!("{:?}", query);
+    use tantivy::DocAddress;
 
-    let top_docs: Vec<(f32, tantivy::DocAddress)> = searcher.search(&query, &TopDocs::with_limit(limit)).unwrap();
+    let docs: Vec<tantivy::DocAddress> = match order {
+        Order::Relevancy => {
+            let collector = TopDocs::with_limit(limit);
+            let top_docs: Vec<(f32, tantivy::DocAddress)> =
+                searcher.search(&query, &collector).unwrap();
 
-    println!("There are {} results.", top_docs.len());
-    for (score, doc_address) in top_docs {
+            top_docs.into_iter()
+                .map(|(_score, doc_address): (f32, DocAddress)| doc_address)
+                .collect()
+        },
+        Order::Words => {
+            let collector = TopDocs::with_limit(limit).order_by_fast_field(schema.words);
+            let top_docs: Vec<(i64, tantivy::DocAddress)> =
+                searcher.search(&query, &collector).unwrap();
+
+            top_docs.into_iter()
+                .map(|(_score, doc_address): (i64, DocAddress)| doc_address)
+                .collect()
+        },
+        Order::Likes => {
+            let collector = TopDocs::with_limit(limit).order_by_fast_field(schema.likes);
+            let top_docs: Vec<(i64, tantivy::DocAddress)> =
+                searcher.search(&query, &collector).unwrap();
+
+            top_docs.into_iter()
+                .map(|(_score, doc_address): (i64, DocAddress)| doc_address)
+                .collect()
+        },
+        Order::Dislikes => {
+            let collector = TopDocs::with_limit(limit).order_by_fast_field(schema.dislikes);
+            let top_docs: Vec<(i64, tantivy::DocAddress)> =
+                searcher.search(&query, &collector).unwrap();
+
+            top_docs.into_iter()
+                .map(|(_score, doc_address): (i64, DocAddress)| doc_address)
+                .collect()
+        },
+        Order::Wilson => {
+            let collector = TopDocs::with_limit(limit).order_by_fast_field(schema.wilson);
+            let top_docs: Vec<(f64, tantivy::DocAddress)> =
+                searcher.search(&query, &collector).unwrap();
+
+            top_docs.into_iter()
+                .map(|(_score, doc_address): (f64, DocAddress)| doc_address)
+                .collect()
+        },
+    };
+
+    //let top_docs: Vec<(f32, tantivy::DocAddress)> = searcher.search(&query, &collector).unwrap();
+
+    println!("There are {} results.", docs.len());
+    for doc_address in docs {
         let retrieved_doc = searcher.doc(doc_address).unwrap();
         //println!("{} {}", score, schema.schema.to_json(&retrieved_doc));
         println!(
-            "{:?} by {:?} tags {:?}",
+            "{:?} by {:?} words {:?} likes {:?} dislikes {:?} wilson {:?}",
             retrieved_doc.get_first(schema.title).unwrap().text().unwrap(),
             retrieved_doc.get_first(schema.author).unwrap().path().unwrap(),
-            retrieved_doc.get_all(schema.tag).map(|f| f.path().unwrap()).collect::<Vec<String>>(),
+            retrieved_doc.get_first(schema.words).unwrap().i64_value().unwrap(),
+            retrieved_doc.get_first(schema.likes).unwrap().i64_value().unwrap(),
+            retrieved_doc.get_first(schema.dislikes).unwrap().i64_value().unwrap(),
+            retrieved_doc.get_first(schema.wilson).unwrap().f64_value().unwrap(),
+            //retrieved_doc.get_all(schema.tag).map(|f| f.path().unwrap()).collect::<Vec<String>>(),
         );
     }
 
@@ -369,7 +560,7 @@ impl FimfArchiveSchema {
 fn import_fimfarchive<P: AsRef<Path>>(path: P, index: &Index, schema: &FimfArchiveSchema, limit: usize) -> Result<(), Error> {
     let mut index_writer = index.writer(16_000_000).unwrap();
 
-    for (i, line) in file_lines(path).unwrap().take(limit).enumerate() {
+    for (_i, line) in file_lines(path).unwrap().take(limit).enumerate() {
         let line = line.unwrap();
         if line.len() != 1 {
             // ignore the object key and trailing comma
@@ -433,9 +624,10 @@ fn import_fimfarchive<P: AsRef<Path>>(path: P, index: &Index, schema: &FimfArchi
 async fn main() {
     let schema = FimfArchiveSchema::new();
     
-    let index = Index::open_in_dir("index").unwrap();
+    //let index = Index::open_in_dir("index").unwrap();
 
-    //import_fimfarchive("/home/csos95/.config/fimr/index.json", &index, &schema, 200_000).unwrap();
+    let index = Index::create_in_dir("index", schema.schema.clone()).unwrap();
+    import_fimfarchive("index.json", &index, &schema, 200_000).unwrap();
 
     let reader = index
         .reader_builder()
