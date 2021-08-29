@@ -73,6 +73,11 @@ impl From<url::ParseError> for Error {
 
 #[async_std::main]
 async fn main() {
+    // what is needed for loading the index and what is needed for searching?
+    // for loading, the location of the fimfarchive.zip and the directory for the index
+    // for searching, the directory for the index
+
+    //let (schema, index, reader) = fimfarchive::load("index.json", "index");
     let (schema, index, reader) = fimfarchive::open("index");
 
     println!("What is your query?");

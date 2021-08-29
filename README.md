@@ -78,6 +78,8 @@ Requirements:
         facet term query
     - [x] parse out "order:likes" to sort by likes (do same for dislikes, wilson, words)
         use TopDocs::order_by_fast_field
+- [ ] make cursive views to search fimfarchive and display results
+- [ ] check if the index directory exists, if not create it
 - [ ] benchmark the speed/storage size of different zstd levels.
 - [ ] test dictionary trainging for compression  
     Training on all books would probably take too long, but try it anyways.  
