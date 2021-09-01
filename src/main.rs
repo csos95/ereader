@@ -1,20 +1,21 @@
 #![allow(dead_code)]
 
+mod fimfarchive;
 mod library;
 mod scan;
-mod fimfarchive;
 
 use async_std::task;
 use cursive::traits::Scrollable;
 use cursive::view::{Nameable, Resizable};
 use cursive::views::{Dialog, ScrollView, SelectView, TextView};
-use cursive::{Cursive, View, XY};
+use cursive::{Cursive, CursiveExt, View, XY};
 use cursive_markup::html::RichRenderer;
 use cursive_markup::MarkupView;
+use fimfarchive::FimfArchiveSchema;
 use library::{Book, Bookmark, Chapter, Toc};
 use sqlx::SqlitePool;
 use std::io::Write;
-use std::io::BufRead;
+use tantivy::{Index, IndexReader};
 use thiserror::Error;
 use uuid::adapter::Hyphenated;
 use uuid::Uuid;
@@ -73,54 +74,57 @@ impl From<url::ParseError> for Error {
 
 #[async_std::main]
 async fn main() {
-    // what is needed for loading the index and what is needed for searching?
-    // for loading, the location of the fimfarchive.zip and the directory for the index
-    // for searching, the directory for the index
+    // // what is needed for loading the index and what is needed for searching?
+    // // for loading, the location of the fimfarchive.zip and the directory for the index
+    // // for searching, the directory for the index
 
-    //let (schema, index, reader) = fimfarchive::load("index.json", "index");
-    let (schema, index, reader) = fimfarchive::open("index");
+    // //let (schema, index, reader) = fimfarchive::load("index.json", "index");
+    // let (schema, index, reader) = fimfarchive::open("index");
 
-    println!("What is your query?");
+    // println!("What is your query?");
 
-    let stdin = std::io::stdin();
-    let input = stdin.lock().lines().next().unwrap().unwrap();
+    // let stdin = std::io::stdin();
+    // let input = stdin.lock().lines().next().unwrap().unwrap();
 
-    println!("Results limit?");
+    // println!("Results limit?");
 
-    let stdin = std::io::stdin();
-    let limit_str = stdin.lock().lines().next().unwrap().unwrap();
-    let limit: usize = limit_str.parse().expect("expected a usize");
+    // let stdin = std::io::stdin();
+    // let limit_str = stdin.lock().lines().next().unwrap().unwrap();
+    // let limit: usize = limit_str.parse().expect("expected a usize");
 
-    fimfarchive::search(input, limit, &index, &schema, &reader);
+    // fimfarchive::search(input, limit, &index, &schema, &reader);
 
-    //let pool = SqlitePool::connect("ereader.sqlite").await.unwrap();
-    //let start = chrono::Utc::now();
-    //scan::scan(&pool, "epub").await.unwrap();
-    //let end = chrono::Utc::now();
-    //println!("start {}\nend {}\ndiff {}", start, end, end - start);
-    //pool.close().await;
+    let pool = SqlitePool::connect("ereader.sqlite").await.unwrap();
+    let start = chrono::Utc::now();
+    scan::scan(&pool, "epub").await.unwrap();
+    let end = chrono::Utc::now();
+    println!("start {}\nend {}\ndiff {}", start, end, end - start);
+    pool.close().await;
 
-    //let mut siv = Cursive::new();
+    let mut siv = Cursive::new();
 
-    //let model = init().await.unwrap();
-    //view(&mut siv, &model);
-    //siv.set_user_data(model);
+    let model = init().await.unwrap();
+    view(&mut siv, &model);
+    siv.set_user_data(model);
 
-    //siv.add_global_callback('q', |s| {
-    //    cleanup(s);
-    //});
-    //siv.add_global_callback('l', |s| {
-    //    s.cb_sink()
-    //        .send(Box::new(move |s| update_view(s, Msg::GoLibrary)))
-    //        .unwrap();
-    //});
-    //siv.run();
+    siv.add_global_callback('q', |s| {
+        cleanup(s);
+    });
+    siv.add_global_callback('l', |s| {
+        s.cb_sink()
+            .send(Box::new(move |s| update_view(s, Msg::GoLibrary)))
+            .unwrap();
+    });
+    siv.run();
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct Model {
     pool: SqlitePool,
     page: Page,
+    schema: FimfArchiveSchema,
+    index: Index,
+    reader: IndexReader,
 }
 
 #[derive(Clone, Debug)]
@@ -150,9 +154,14 @@ async fn init() -> Result<Model, Error> {
 
     let books = library::get_books(&pool).await?;
 
+    let (schema, index, reader) = fimfarchive::open("index");
+
     Ok(Model {
         pool,
         page: Page::Library(books),
+        schema,
+        index,
+        reader,
     })
 }
 

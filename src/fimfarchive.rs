@@ -541,7 +541,7 @@ pub fn search(
     let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
 
     let filters: Vec<FilterFn> = vec![
-        authors, tags, words, likes, dislikes, wilson, rating, status
+        authors, tags, words, likes, dislikes, wilson, rating, status,
     ];
 
     for filter in filters {
@@ -671,6 +671,7 @@ pub fn search(
     }
 }
 
+#[derive(Clone)]
 pub struct FimfArchiveSchema {
     schema: Schema,
     title: Field,
