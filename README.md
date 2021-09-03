@@ -80,6 +80,8 @@ Requirements:
         use TopDocs::order_by_fast_field
 - [ ] make cursive views to search fimfarchive and display results
 - [ ] check if the index directory exists, if not create it
+- [ ] import epub from fimfarchive results into library
+- [ ] settings page (fimfarchive path, epubs path, scan option for epubs/archives)
 - [ ] benchmark the speed/storage size of different zstd levels.
 - [ ] test dictionary trainging for compression  
     Training on all books would probably take too long, but try it anyways.  
