@@ -529,13 +529,26 @@ fn order(mut input: String) -> (String, Order) {
 
 type FilterFn = fn(String, &FimfArchiveSchema) -> (String, Vec<(Occur, Box<dyn Query>)>);
 
+#[derive(Clone, Debug)]
+pub struct FimfArchiveResult {
+    pub title: String,
+    pub author: String,
+    pub tags: Vec<String>,
+    pub words: i64,
+    pub likes: i64,
+    pub dislikes: i64,
+    pub wilson: f64,
+    pub status: String,
+    pub rating: String,
+}
+
 pub fn search(
     mut input: String,
     limit: usize,
     index: &Index,
     schema: &FimfArchiveSchema,
     reader: &IndexReader,
-) {
+) -> Vec<FimfArchiveResult> {
     let searcher = reader.searcher();
 
     let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
@@ -621,54 +634,74 @@ pub fn search(
     //let top_docs: Vec<(f32, tantivy::DocAddress)> = searcher.search(&query, &collector).unwrap();
 
     println!("There are {} results.", docs.len());
+    let mut results = Vec::new();
     for doc_address in docs {
         let retrieved_doc = searcher.doc(doc_address).unwrap();
         //println!("{} {}", score, schema.schema.to_json(&retrieved_doc));
-        println!(
-            "{:?} by {:?} words {:?} likes {:?} dislikes {:?} wilson {:?} status {:?} rating {:?}",
-            retrieved_doc
-                .get_first(schema.title)
-                .unwrap()
-                .text()
-                .unwrap(),
-            retrieved_doc
-                .get_first(schema.author)
-                .unwrap()
-                .path()
-                .unwrap(),
-            retrieved_doc
-                .get_first(schema.words)
-                .unwrap()
-                .i64_value()
-                .unwrap(),
-            retrieved_doc
-                .get_first(schema.likes)
-                .unwrap()
-                .i64_value()
-                .unwrap(),
-            retrieved_doc
-                .get_first(schema.dislikes)
-                .unwrap()
-                .i64_value()
-                .unwrap(),
-            retrieved_doc
-                .get_first(schema.wilson)
-                .unwrap()
-                .f64_value()
-                .unwrap(),
-            retrieved_doc
-                .get_first(schema.status)
-                .unwrap()
-                .path()
-                .unwrap(),
-            retrieved_doc
-                .get_first(schema.rating)
-                .unwrap()
-                .path()
-                .unwrap(),
-            //retrieved_doc.get_all(schema.tag).map(|f| f.path().unwrap()).collect::<Vec<String>>(),
-        );
+
+        // println!(
+        //     "{:?} by {:?} words {:?} likes {:?} dislikes {:?} wilson {:?} status {:?} rating {:?}",
+        let title = retrieved_doc
+            .get_first(schema.title)
+            .unwrap()
+            .text()
+            .unwrap()
+            .to_string();
+        let author = retrieved_doc
+            .get_first(schema.author)
+            .unwrap()
+            .path()
+            .unwrap();
+        let words = retrieved_doc
+            .get_first(schema.words)
+            .unwrap()
+            .i64_value()
+            .unwrap();
+        let likes = retrieved_doc
+            .get_first(schema.likes)
+            .unwrap()
+            .i64_value()
+            .unwrap();
+        let dislikes = retrieved_doc
+            .get_first(schema.dislikes)
+            .unwrap()
+            .i64_value()
+            .unwrap();
+        let wilson = retrieved_doc
+            .get_first(schema.wilson)
+            .unwrap()
+            .f64_value()
+            .unwrap();
+        let status = retrieved_doc
+            .get_first(schema.status)
+            .unwrap()
+            .path()
+            .unwrap();
+        let rating = retrieved_doc
+            .get_first(schema.rating)
+            .unwrap()
+            .path()
+            .unwrap();
+        let tags = retrieved_doc
+            .get_all(schema.tag)
+            .map(|f| f.path().unwrap())
+            .collect::<Vec<String>>();
+        results.push(FimfArchiveResult {
+            title,
+            author,
+            tags,
+            words,
+            likes,
+            dislikes,
+            wilson,
+            status,
+            rating,
+        })
+        //     //retrieved_doc.get_all(schema.tag).map(|f| f.path().unwrap()).collect::<Vec<String>>(),
+        // );
     }
+
+    results
 }
 
 #[derive(Clone)]
