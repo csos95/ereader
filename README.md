@@ -78,6 +78,16 @@ Requirements:
         facet term query
     - [x] parse out "order:likes" to sort by likes (do same for dislikes, wilson, words)
         use TopDocs::order_by_fast_field
+- [ ] split up/standardize view interface?
+    - [ ] put all the tui stuff in a separate module
+    - [ ] make macro for sending messages (or some other way to shorten that boilerplate)
+    - [ ] see if there are common things that can be abstracted (ex: list of things with detail view and message on select?)
+    - [ ] try out rebuilding view on internal view change to see if it causes flickering or lag
+        sometimes a view needs to be changed on message instead of going to another view (like list of things with detail view)  
+	it might get messy if I try to mix functional TEA with mutable internal view changes  
+	if I can rebuild a view instead of doing internal changes, it could make things cleaner and easier to maintain
+    - [ ] if this isn't enough, maybe try doing the elm taco donut for splitting views up into separate modules  
+        elm taco seemed wrong to me when I tried it and when I looked at elm taco donut it made more sense
 - [ ] make cursive views to search fimfarchive and display results
 - [ ] check if the index directory exists, if not create it
 - [ ] import epub from fimfarchive results into library
