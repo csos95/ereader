@@ -4,6 +4,7 @@ mod fimfarchive;
 mod library;
 mod scan;
 mod tui;
+mod new_tui;
 
 use cursive::{Cursive, CursiveExt};
 // use sqlx::SqlitePool;
@@ -92,17 +93,21 @@ async fn main() {
 
     let mut siv = Cursive::new();
 
-    let model = tui::init().await.unwrap();
-    tui::view(&mut siv, &model);
-    siv.set_user_data(model);
+    //let model = tui::init().await.unwrap();
+    //tui::view(&mut siv, &model);
+    //siv.set_user_data(model);
+
+    let pool = sqlx::SqlitePool::connect("ereader.sqlite").await.unwrap();
+    new_tui::library(&mut siv, &pool).await.unwrap();
 
     siv.add_global_callback('q', |s| {
         tui::cleanup(s);
     });
     siv.add_global_callback('l', |s| {
-        s.cb_sink()
-            .send(Box::new(move |s| tui::update_view(s, tui::Msg::GoLibrary)))
-            .unwrap();
+        s.quit();
+//        s.cb_sink()
+//            .send(Box::new(move |s| tui::update_view(s, tui::Msg::GoLibrary)))
+//            .unwrap();
     });
     siv.run();
 }
