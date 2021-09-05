@@ -44,6 +44,17 @@ macro_rules! try_view {
     }
 }
 
+macro_rules! try_view1 {
+    ($view:expr) => {
+        |s| {
+            match $view(s) {
+                Err(e) => error_message(s, e),
+                _ => {},
+            }
+        }
+    }
+}
+
 pub fn error_message(s: &mut Cursive, e: Error) {
     s.add_layer(
         Dialog::around(TextView::new(e.to_string()))
@@ -115,7 +126,35 @@ fn set_chapter(id: Hyphenated, index: i64) -> impl Fn(&mut Cursive) {
         if index > 1 {
             chapter.add_button("Prev", set_chapter(id, index-1));
         }
+        chapter.add_button("TOC", toc(id));
         chapter.add_button("Close", |s| { s.pop_layer(); });
+    }
+}
+
+fn chapter_index(s: &mut Cursive, toc: &Toc) -> Result<(), Error> {
+    s.pop_layer();
+    // note: this index is the order of the toc, not the chapters so it's not correct.
+    // just using it for now to have it hooked up and doing something
+    set_chapter(toc.book_id, toc.index+1)(s);
+
+    Ok(())
+}
+
+fn toc(id: Hyphenated) -> impl Fn(&mut Cursive) {
+    move |s| {
+        let data = data(s).unwrap();
+        let toc = data.run(get_toc(&data.pool, id)).unwrap();
+
+        let mut toc_list = SelectView::new();
+        for toc in toc {
+            toc_list.add_item(toc.title.clone(), toc.clone());
+        }
+
+        toc_list.set_on_submit(try_view!(chapter_index));
+
+        s.add_layer(Dialog::around(toc_list.scrollable())
+                    .title("Table of Contents")
+                    .dismiss_button("Close"));
     }
 }
 
