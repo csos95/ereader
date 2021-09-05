@@ -36,6 +36,8 @@ pub enum Error {
     EpubMissingTocResource,
     #[error("debug message {0}")]
     DebugMsg(String),
+    #[error("Missing UserData in Cursive")]
+    MissingUserData,
 }
 
 impl From<sqlx::Error> for Error {
@@ -97,8 +99,9 @@ async fn main() {
     //tui::view(&mut siv, &model);
     //siv.set_user_data(model);
 
-    let pool = sqlx::SqlitePool::connect("ereader.sqlite").await.unwrap();
-    new_tui::library(&mut siv, &pool).await.unwrap();
+    let user_data = new_tui::init().await.unwrap();
+    siv.set_user_data(user_data);
+    new_tui::library(&mut siv).unwrap();
 
     siv.add_global_callback('q', |s| {
         tui::cleanup(s);

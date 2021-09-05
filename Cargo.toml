@@ -49,6 +49,10 @@ git = "https://github.com/csos95/cursive-markup-rs.git"
 version = "0.5.5"
 features = ["runtime-async-std-rustls", "sqlite", "macros", "migrate", "chrono", "uuid"]
 
+[dependencies.tokio]
+version = "1"
+features = ["full"]
+
 [dependencies.uuid]
 version = "0.8.2"
 features = [ "v4", "v5" ]
