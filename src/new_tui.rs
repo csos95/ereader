@@ -37,17 +37,14 @@ macro_rules! try_view {
     ($view:expr) => {
         |s, d| {
             match $view(s, d) {
-                Ok(()) => {},
                 Err(e) => error_message(s, e),
+                _ => {},
             }
         }
-    }
-}
-
-macro_rules! try_view1 {
-    ($view:expr) => {
-        |s| {
-            match $view(s) {
+    };
+    ($view:expr, $($args:expr),+) => {
+        move |s| {
+            match $view(s, $($args),+) {
                 Err(e) => error_message(s, e),
                 _ => {},
             }
@@ -96,65 +93,65 @@ fn set_book_details(s: &mut Cursive, book: &Book) {
 
 fn chapter(s: &mut Cursive, book: &Book) -> Result<(), Error> {
     s.add_layer(Dialog::new().with_name("chapter"));
-    set_chapter(book.id, 1)(s);
+    set_chapter(s, book.id, 1);
 
     Ok(())
 }
 
-fn set_chapter(id: Hyphenated, index: i64) -> impl Fn(&mut Cursive) {
-    move |s| {
-        let data = data(s).unwrap();
-        let chapter = data.run(get_chapter(&data.pool, id, index)).unwrap();
-        let num_chapters = data.run(get_num_chapters(&data.pool, id)).unwrap();
+fn set_chapter(s: &mut Cursive, id: Hyphenated, index: i64) -> Result<(), Error> {
+    let data = data(s)?;
+    let chapter = data.run(get_chapter(&data.pool, id, index))?;
+    let num_chapters = data.run(get_num_chapters(&data.pool, id))?;
 
-        let cursor = std::io::Cursor::new(chapter.content.clone());
-        let content = zstd::stream::decode_all(cursor).unwrap();
-        let content_str = String::from_utf8(content).unwrap();
+    let cursor = std::io::Cursor::new(chapter.content.clone());
+    let content = zstd::stream::decode_all(cursor).unwrap();
+    let content_str = String::from_utf8(content).unwrap();
 
-        let mut chapter = s.find_name::<Dialog>("chapter").unwrap();
+    let mut chapter = s.find_name::<Dialog>("chapter").unwrap();
 
-        let mut view = MarkupView::html(&content_str);
-        view.on_link_focus(|_s, _url| {});
-        view.on_link_select(|_s, _url| {});
+    let mut view = MarkupView::html(&content_str);
+    view.on_link_focus(|_s, _url| {});
+    view.on_link_select(|_s, _url| {});
 
-        chapter.set_content(view.scrollable());
+    chapter.set_content(view.scrollable());
 
-        chapter.clear_buttons();
-        if index < num_chapters as i64 {
-            chapter.add_button("Next", set_chapter(id, index+1));
-        }
-        if index > 1 {
-            chapter.add_button("Prev", set_chapter(id, index-1));
-        }
-        chapter.add_button("TOC", toc(id));
-        chapter.add_button("Close", |s| { s.pop_layer(); });
+    chapter.clear_buttons();
+    if index < num_chapters as i64 {
+        chapter.add_button("Next", try_view!(set_chapter, id, index+1));
     }
+    if index > 1 {
+        chapter.add_button("Prev", try_view!(set_chapter, id, index-1));
+    }
+    chapter.add_button("TOC", try_view!(toc, id));
+    chapter.add_button("Close", |s| { s.pop_layer(); });
+
+    Ok(())
 }
 
 fn chapter_index(s: &mut Cursive, toc: &Toc) -> Result<(), Error> {
     s.pop_layer();
     // note: this index is the order of the toc, not the chapters so it's not correct.
     // just using it for now to have it hooked up and doing something
-    set_chapter(toc.book_id, toc.index+1)(s);
+    set_chapter(s, toc.book_id, toc.index+1);
 
     Ok(())
 }
 
-fn toc(id: Hyphenated) -> impl Fn(&mut Cursive) {
-    move |s| {
-        let data = data(s).unwrap();
-        let toc = data.run(get_toc(&data.pool, id)).unwrap();
+fn toc(s: &mut Cursive, id: Hyphenated) -> Result<(), Error> {
+    let data = data(s)?;
+    let toc = data.run(get_toc(&data.pool, id))?;
 
-        let mut toc_list = SelectView::new();
-        for toc in toc {
-            toc_list.add_item(toc.title.clone(), toc.clone());
-        }
-
-        toc_list.set_on_submit(try_view!(chapter_index));
-
-        s.add_layer(Dialog::around(toc_list.scrollable())
-                    .title("Table of Contents")
-                    .dismiss_button("Close"));
+    let mut toc_list = SelectView::new();
+    for toc in toc {
+        toc_list.add_item(toc.title.clone(), toc.clone());
     }
+
+    toc_list.set_on_submit(try_view!(chapter_index));
+
+    s.add_layer(Dialog::around(toc_list.scrollable())
+                .title("Table of Contents")
+                .dismiss_button("Close"));
+
+    Ok(())
 }
 
