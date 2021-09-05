@@ -84,20 +84,38 @@ fn set_book_details(s: &mut Cursive, book: &Book) {
 }
 
 fn chapter(s: &mut Cursive, book: &Book) -> Result<(), Error> {
-    let data = data(s)?;
-    let chapter = data.run(get_chapter(&data.pool, book.id, 1))?;
-
-    let cursor = std::io::Cursor::new(chapter.content.clone());
-    let content = zstd::stream::decode_all(cursor).unwrap();
-    let content_str = String::from_utf8(content).unwrap();
-    let mut view = MarkupView::html(&content_str);
-    view.on_link_focus(|_s, _url| {});
-    view.on_link_select(|_s, _url| {});
-
-    s.add_layer(Dialog::around(view.scrollable())
-                .title("Chapter")
-                .button("Close", |s| { s.pop_layer(); }));
+    s.add_layer(Dialog::new().with_name("chapter"));
+    set_chapter(book.id, 1)(s);
 
     Ok(())
+}
+
+fn set_chapter(id: Hyphenated, index: i64) -> impl Fn(&mut Cursive) {
+    move |s| {
+        let data = data(s).unwrap();
+        let chapter = data.run(get_chapter(&data.pool, id, index)).unwrap();
+        let num_chapters = data.run(get_num_chapters(&data.pool, id)).unwrap();
+
+        let cursor = std::io::Cursor::new(chapter.content.clone());
+        let content = zstd::stream::decode_all(cursor).unwrap();
+        let content_str = String::from_utf8(content).unwrap();
+
+        let mut chapter = s.find_name::<Dialog>("chapter").unwrap();
+
+        let mut view = MarkupView::html(&content_str);
+        view.on_link_focus(|_s, _url| {});
+        view.on_link_select(|_s, _url| {});
+
+        chapter.set_content(view.scrollable());
+
+        chapter.clear_buttons();
+        if index < num_chapters as i64 {
+            chapter.add_button("Next", set_chapter(id, index+1));
+        }
+        if index > 1 {
+            chapter.add_button("Prev", set_chapter(id, index-1));
+        }
+        chapter.add_button("Close", |s| { s.pop_layer(); });
+    }
 }
 
