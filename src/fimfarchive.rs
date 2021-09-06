@@ -130,7 +130,6 @@ fn authors(
 
     if authors.len() == 1 {
         let facet = Facet::from_path(&["author", &authors[0]]);
-        println!("{}", facet);
         let term = Term::from_facet(schema.author, &facet);
         let query = TermQuery::new(term, IndexRecordOption::Basic);
         queries.push((Occur::Must, Box::new(query)));
@@ -139,7 +138,6 @@ fn authors(
 
         for author in authors {
             let facet = Facet::from_path(&["author", &author]);
-            println!("{}", facet);
             let term = Term::from_facet(schema.author, &facet);
             let query = TermQuery::new(term, IndexRecordOption::Basic);
             author_queries.push((Occur::Should, Box::new(query)));
@@ -172,7 +170,6 @@ fn tags(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occur, B
     if ex_tags.len() != 0 {
         for ex_tag in ex_tags {
             let facet = Facet::from_path(&["tag", &ex_tag]);
-            println!("ex {}", facet);
             let term = Term::from_facet(schema.tag, &facet);
             let query = TermQuery::new(term, IndexRecordOption::Basic);
             //ex_tag_queries.push((Occur::MustNot, Box::new(query)));
@@ -197,7 +194,6 @@ fn tags(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occur, B
 
         for or_tag in or_tags {
             let facet = Facet::from_path(&["tag", &or_tag]);
-            println!("or {}", facet);
             let term = Term::from_facet(schema.tag, &facet);
             let query = TermQuery::new(term, IndexRecordOption::Basic);
             or_tag_queries.push((Occur::Should, Box::new(query)));
@@ -222,7 +218,6 @@ fn tags(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occur, B
     if tags.len() != 0 {
         for tag in tags {
             let facet = Facet::from_path(&["tag", &tag]);
-            println!("{}", facet);
             let term = Term::from_facet(schema.tag, &facet);
             let query = TermQuery::new(term, IndexRecordOption::Basic);
             //tag_queries.push((Occur::Must, Box::new(query)));
@@ -464,7 +459,6 @@ fn rating(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occur,
 
     for rating in ratings {
         let facet = Facet::from_path(&["rating", &rating]);
-        println!("{}", facet);
         let term = Term::from_facet(schema.rating, &facet);
         let query = TermQuery::new(term, IndexRecordOption::Basic);
         queries.push((Occur::Must, Box::new(query)));
@@ -488,7 +482,6 @@ fn status(mut input: String, schema: &FimfArchiveSchema) -> (String, Vec<(Occur,
 
     for status in statuses {
         let facet = Facet::from_path(&["status", &status]);
-        println!("{}", facet);
         let term = Term::from_facet(schema.status, &facet);
         let query = TermQuery::new(term, IndexRecordOption::Basic);
         queries.push((Occur::Must, Box::new(query)));
@@ -533,6 +526,7 @@ type FilterFn = fn(String, &FimfArchiveSchema) -> (String, Vec<(Occur, Box<dyn Q
 pub struct FimfArchiveResult {
     pub title: String,
     pub author: String,
+    pub description: String,
     pub tags: Vec<String>,
     pub words: i64,
     pub likes: i64,
@@ -566,7 +560,6 @@ pub fn search(
     let (input, order) = order(input);
 
     let input = input.trim_start().trim_end().to_string();
-    println!("input: [{}]", input);
     if input.len() != 0 {
         let query_parser = QueryParser::for_index(&index, vec![schema.title, schema.description]);
         let text_query = query_parser.parse_query(&input).unwrap();
@@ -575,7 +568,6 @@ pub fn search(
     }
 
     let query = BooleanQuery::new(queries);
-    println!("{:?}", query);
     use tantivy::DocAddress;
 
     let docs: Vec<tantivy::DocAddress> = match order {
@@ -633,14 +625,10 @@ pub fn search(
 
     //let top_docs: Vec<(f32, tantivy::DocAddress)> = searcher.search(&query, &collector).unwrap();
 
-    println!("There are {} results.", docs.len());
     let mut results = Vec::new();
     for doc_address in docs {
         let retrieved_doc = searcher.doc(doc_address).unwrap();
-        //println!("{} {}", score, schema.schema.to_json(&retrieved_doc));
 
-        // println!(
-        //     "{:?} by {:?} words {:?} likes {:?} dislikes {:?} wilson {:?} status {:?} rating {:?}",
         let title = retrieved_doc
             .get_first(schema.title)
             .unwrap()
@@ -652,6 +640,12 @@ pub fn search(
             .unwrap()
             .path()
             .unwrap();
+        let description = retrieved_doc
+            .get_first(schema.description)
+            .unwrap()
+            .text()
+            .unwrap()
+            .to_string();
         let words = retrieved_doc
             .get_first(schema.words)
             .unwrap()
@@ -689,6 +683,7 @@ pub fn search(
         results.push(FimfArchiveResult {
             title,
             author,
+            description,
             tags,
             words,
             likes,
@@ -696,9 +691,7 @@ pub fn search(
             wilson,
             status,
             rating,
-        })
-        //     //retrieved_doc.get_all(schema.tag).map(|f| f.path().unwrap()).collect::<Vec<String>>(),
-        // );
+        });
     }
 
     results

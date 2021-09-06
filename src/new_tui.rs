@@ -1,14 +1,16 @@
+use crate::fimfarchive::FimfArchiveResult;
+use crate::fimfarchive::FimfArchiveSchema;
 use crate::library::delete_bookmark;
 use crate::library::*;
 use crate::Error;
 use cursive::traits::*;
+use tantivy::{Index, IndexReader};
 //use cursive::view::*;
 use cursive::views::*;
 use cursive::*;
 use cursive_markup::html::RichRenderer;
 use cursive_markup::MarkupView;
 use sqlx::SqlitePool;
-use std::fmt::format;
 use std::future::Future;
 use std::io::Write;
 use tokio::runtime::Runtime;
@@ -17,6 +19,9 @@ use uuid::adapter::Hyphenated;
 pub struct Data {
     pub pool: SqlitePool,
     pub runtime: Runtime,
+    schema: FimfArchiveSchema,
+    index: Index,
+    reader: IndexReader,
 }
 
 impl Data {
@@ -26,9 +31,13 @@ impl Data {
 }
 
 pub async fn init() -> Result<Data, Error> {
+    let (schema, index, reader) = crate::fimfarchive::open("index");
     Ok(Data {
         pool: SqlitePool::connect("ereader.sqlite").await?,
         runtime: Runtime::new()?,
+        schema,
+        index,
+        reader,
     })
 }
 
@@ -95,30 +104,50 @@ pub fn library(s: &mut Cursive) -> Result<(), Error> {
         s, book.id, 1
     )));
 
-    for book in books {
+    for book in &books {
         books_list.add_item(book.title.clone(), book.clone());
     }
 
-    let book_details = TextView::new("book details").with_name("library detail");
+    let book_details = Panel::new(ListView::new());
 
-    library.add_child(books_list);
+    library.add_child(books_list.scrollable());
     library.add_child(book_details);
 
     s.add_layer(
-        Dialog::around(library.scrollable())
+        Dialog::around(library.with_name("library"))
             .title("Library")
             .button("Bookmarks", try_view!(bookmarks, button))
+            .button("Fimfarchive", fimfarchive)
             .max_width(90),
     );
+
+    if let Some(book) = books.get(0) {
+        set_book_details(s, book);
+    }
 
     Ok(())
 }
 
 fn set_book_details(s: &mut Cursive, book: &Book) {
-    let title = book.title.clone();
-    s.call_on_name("library detail", move |v: &mut TextView| {
-        v.set_content(title);
-    });
+    let mut detail_view = LinearLayout::vertical();
+
+    detail_view.add_child(TextView::new(format!("Title: {}", book.title)));
+
+    if let Some(creator) = &book.creator {
+        detail_view.add_child(TextView::new(format!("Author: {}", creator)));
+    }
+    if let Some(publisher) = &book.publisher {
+        detail_view.add_child(TextView::new(format!("Publisher: {}", publisher)));
+    }
+    detail_view.add_child(TextView::new("\n\n"));
+    if let Some(description) = &book.description {
+        detail_view.add_child(MarkupView::html(description));
+    }
+
+    let mut library = s.find_name::<LinearLayout>("library").unwrap();
+
+    library.remove_child(1);
+    library.add_child(Panel::new(detail_view.scrollable()).title("Details"));
 }
 
 // ============================== READER ==============================
@@ -278,4 +307,82 @@ fn set_bookmark(s: &mut Cursive, book_id: Hyphenated, chapter_id: Hyphenated) ->
             created: chrono::Utc::now(),
         },
     ))
+}
+
+// ============================== FIMFARCHIVE ==============================
+
+fn fimfarchive(s: &mut Cursive) {
+    let mut search_view = EditView::new();
+
+    search_view.set_on_submit(try_view!(search_fimfarchive));
+
+    s.add_layer(
+        Dialog::around(search_view)
+            .title("Fimfarchive Search")
+            .dismiss_button("Close")
+            .max_width(90),
+    );
+}
+
+fn search_fimfarchive(s: &mut Cursive, query: &str) -> Result<(), Error> {
+    let data = data(s)?;
+    let books = crate::fimfarchive::search(
+        query.to_string(),
+        50,
+        &data.index,
+        &data.schema,
+        &data.reader,
+    );
+
+    let mut fimfarchive = LinearLayout::vertical();
+
+    let mut books_list = SelectView::new();
+    books_list.set_on_select(set_fimfarchive_details);
+
+    for book in &books {
+        books_list.add_item(book.title.clone(), book.clone());
+    }
+
+    let book_details = Panel::new(ListView::new());
+
+    fimfarchive.add_child(books_list.scrollable());
+    fimfarchive.add_child(book_details);
+
+    s.add_layer(
+        Dialog::around(fimfarchive.with_name("fimfarchive"))
+            .title("Fimfarchive Results")
+            .dismiss_button("Close")
+            .max_width(90),
+    );
+
+    if let Some(book) = books.get(0) {
+        set_fimfarchive_details(s, book);
+    }
+
+    Ok(())
+}
+
+fn set_fimfarchive_details(s: &mut Cursive, book: &FimfArchiveResult) {
+    let mut detail_view = LinearLayout::vertical();
+
+    detail_view.add_child(TextView::new(format!(
+        "Title: {}\nAuthor: {}\nWords: {}\nLikes: {}\nDislikes: {}\nWilson: {:.2}%\nTags: {}\n\n",
+        book.title,
+        book.author.split("/").last().unwrap(),
+        book.words,
+        book.likes,
+        book.dislikes,
+        book.wilson * 100.0,
+        book.tags
+            .iter()
+            .map(|tag| tag.split("/").last().unwrap().to_string())
+            .collect::<Vec<String>>()
+            .join(", ")
+    )));
+    detail_view.add_child(MarkupView::html(&book.description));
+
+    let mut fimfarchive = s.find_name::<LinearLayout>("fimfarchive").unwrap();
+
+    fimfarchive.remove_child(1);
+    fimfarchive.add_child(Panel::new(detail_view.scrollable()).title("Details"));
 }
