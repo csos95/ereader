@@ -4,10 +4,9 @@ mod fimfarchive;
 mod library;
 mod new_tui;
 mod scan;
-mod tui;
 
 use cursive::{Cursive, CursiveExt};
-// use sqlx::SqlitePool;
+use new_tui::error_message;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -111,14 +110,12 @@ async fn main() {
     siv.set_user_data(user_data);
     new_tui::library(&mut siv).unwrap();
 
-    siv.add_global_callback('q', |s| {
-        tui::cleanup(s);
-    });
-    siv.add_global_callback('l', |s| {
-        s.quit();
-        //        s.cb_sink()
-        //            .send(Box::new(move |s| tui::update_view(s, tui::Msg::GoLibrary)))
-        //            .unwrap();
-    });
+    siv.add_global_callback('q', try_view!(new_tui::cleanup, button));
+    // siv.add_global_callback('l', |s| {
+    //     s.quit();
+    //     //        s.cb_sink()
+    //     //            .send(Box::new(move |s| tui::update_view(s, tui::Msg::GoLibrary)))
+    //     //            .unwrap();
+    // });
     siv.run();
 }

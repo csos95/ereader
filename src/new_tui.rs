@@ -41,10 +41,18 @@ pub async fn init() -> Result<Data, Error> {
     })
 }
 
+pub fn cleanup(s: &mut Cursive) -> Result<(), Error> {
+    let data = data(s)?;
+    data.run(data.pool.close());
+    s.quit();
+    Ok(())
+}
+
 fn data(s: &mut Cursive) -> Result<&mut Data, Error> {
     s.user_data().ok_or(Error::MissingUserData)
 }
 
+#[macro_export]
 macro_rules! try_view {
     ($view:expr, button) => {
         |s| {
