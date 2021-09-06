@@ -129,6 +129,14 @@ pub async fn get_chapter_by_id(pool: &SqlitePool, id: Hyphenated) -> Result<Chap
     )
 }
 
+pub async fn get_num_chapters(pool: &SqlitePool, id: Hyphenated) -> Result<i32, Error> {
+    Ok(
+        sqlx::query_scalar!(r#"select count(*) from chapters where book_id = ?"#, id)
+            .fetch_one(pool)
+            .await?,
+    )
+}
+
 pub async fn get_toc(pool: &SqlitePool, book_id: Hyphenated) -> Result<Vec<Toc>, Error> {
     Ok(query_as!(
         Toc,
@@ -145,8 +153,8 @@ pub async fn get_bookmarks(pool: &SqlitePool) -> Result<Vec<Bookmark>, Error> {
        .await?)
 }
 
-pub async fn delete_bookmark(pool: &SqlitePool, chapter_id: i64) -> Result<(), Error> {
-    query!("delete from bookmarks where chapter_id = ?", chapter_id)
+pub async fn delete_bookmark(pool: &SqlitePool, id: i64) -> Result<(), Error> {
+    query!("delete from bookmarks where id = ?", id)
         .execute(pool)
         .await?;
     Ok(())

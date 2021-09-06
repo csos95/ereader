@@ -50,7 +50,42 @@ Requirements:
     I thought that filtering out duplicate files by hash, creating a book id from nil and the book file, and creating a chapter id from the book id and chapter contents would prevent collisions, but apparently not.  
     I forgot about the fact that two chapters could have the same contents.  
     Added another level of uuid with the chapter index to avoid collisions.
-- [ ] try using tantivy to store fimfarchive index.json data
+- [x] try using tantivy to store fimfarchive index.json data
+    - [x] load data from index.json
+    - [x] make tantivy index
+    - [x] put title, author, description, path in tantivy index
+        text
+    - [x] put likes, dislikes, wilson, words in index
+        i64 for all but wilson which is f64
+    - [x] put status, rating in index
+        facet
+    - [x] put tags in index
+        facet
+    - [x] search on title and description
+    - [x] parse out "author(csos95)" to search on author
+        facet term query  
+	if there are multiple authors, make a boolean subquery and use Occur::Should on them  
+        if an author name contains a closing parenthesis, escape it with one backslack
+    - [x] parse out "#(Comedy)" to search on tag
+        facet term query  
+	use "-#(Comedy)" to exclude a tag  
+	use "~#(Random) ~#(Comedy) ~#(Adventure)" to do "or" tags (at least on of them must appear)
+    - [x] parse out "words>1000" to search on words (do other comparisons too)
+        range query
+    - [x] do the same for likes, dislikes, wilson
+        range query
+    - [x] parse out "rating:everyone" and "status:complete" to search on rating and status
+        facet term query
+    - [x] parse out "order:likes" to sort by likes (do same for dislikes, wilson, words)
+        use TopDocs::order_by_fast_field
+- [x] put all the tui stuff in a separate module
+- [x] make macro for sending messages (or some other way to shorten that boilerplate)
+- [ ] make cursive views to search fimfarchive and display results
+    - [x] search page with text box and cancel button
+    - [ ] results page with search button (to do new search)
+- [ ] check if the index directory exists, if not create it
+- [ ] import epub from fimfarchive results into library
+- [ ] settings page (fimfarchive path, epubs path, scan option for epubs/archives)
 - [ ] benchmark the speed/storage size of different zstd levels.
 - [ ] test dictionary trainging for compression  
     Training on all books would probably take too long, but try it anyways.  
@@ -134,7 +169,7 @@ Requirements:
     - [x] store table of contents in database
 - gutenberg
     - [ ] download catalog file from project gutenberg
-    - [ ] parse and store metadata/epub download
+    - [ ] parse using rio_xml and store metadata/epub download
     - [ ] search for books
     - [ ] copy epub to library
 - subcommands
