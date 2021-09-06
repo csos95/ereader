@@ -408,7 +408,7 @@ fn view_fimfarchive_results(s: &mut Cursive, results: &[FimfArchiveResult]) {
         view.add_item(result.title.clone(), result.title.clone());
     }
 
-    view.set_on_submit(|s: &mut Cursive, title: &str| {
+    view.set_on_submit(|_s: &mut Cursive, title: &str| {
         log(format!("selected {}", title));
     });
 

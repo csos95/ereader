@@ -2,9 +2,9 @@
 
 mod fimfarchive;
 mod library;
+mod new_tui;
 mod scan;
 mod tui;
-mod new_tui;
 
 use cursive::{Cursive, CursiveExt};
 // use sqlx::SqlitePool;
@@ -38,6 +38,8 @@ pub enum Error {
     DebugMsg(String),
     #[error("Missing UserData in Cursive")]
     MissingUserData,
+    #[error("Cursive view not found.")]
+    ViewNotFound,
 }
 
 impl From<sqlx::Error> for Error {
@@ -61,6 +63,12 @@ impl From<anyhow::Error> for Error {
 impl From<url::ParseError> for Error {
     fn from(e: url::ParseError) -> Self {
         Error::UrlParseError(e)
+    }
+}
+
+impl From<cursive::view::ViewNotFound> for Error {
+    fn from(_e: cursive::view::ViewNotFound) -> Self {
+        Error::ViewNotFound
     }
 }
 
@@ -108,9 +116,9 @@ async fn main() {
     });
     siv.add_global_callback('l', |s| {
         s.quit();
-//        s.cb_sink()
-//            .send(Box::new(move |s| tui::update_view(s, tui::Msg::GoLibrary)))
-//            .unwrap();
+        //        s.cb_sink()
+        //            .send(Box::new(move |s| tui::update_view(s, tui::Msg::GoLibrary)))
+        //            .unwrap();
     });
     siv.run();
 }
