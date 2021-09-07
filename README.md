@@ -80,9 +80,9 @@ Requirements:
         use TopDocs::order_by_fast_field
 - [x] put all the tui stuff in a separate module
 - [x] make macro for sending messages (or some other way to shorten that boilerplate)
-- [ ] make cursive views to search fimfarchive and display results
+- [x] make cursive views to search fimfarchive and display results
     - [x] search page with text box and cancel button
-    - [ ] results page with search button (to do new search)
+    - [x] results page with details on selected result
 - [ ] check if the index directory exists, if not create it
 - [ ] import epub from fimfarchive results into library
 - [ ] settings page (fimfarchive path, epubs path, scan option for epubs/archives)
