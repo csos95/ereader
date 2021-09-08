@@ -71,8 +71,7 @@ impl From<cursive::view::ViewNotFound> for Error {
     }
 }
 
-#[async_std::main]
-async fn main() {
+fn main() {
     // // what is needed for loading the index and what is needed for searching?
     // // for loading, the location of the fimfarchive.zip and the directory for the index
     // // for searching, the directory for the index
@@ -106,7 +105,7 @@ async fn main() {
     //tui::view(&mut siv, &model);
     //siv.set_user_data(model);
 
-    let user_data = new_tui::init().await.unwrap();
+    let user_data = new_tui::init().unwrap();
     siv.set_user_data(user_data);
     new_tui::library(&mut siv).unwrap();
 

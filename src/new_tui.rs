@@ -1,6 +1,5 @@
 use crate::fimfarchive::FimfArchiveResult;
 use crate::fimfarchive::FimfArchiveSchema;
-use crate::library::delete_bookmark;
 use crate::library::*;
 use crate::Error;
 use cursive::traits::*;
@@ -30,11 +29,14 @@ impl Data {
     }
 }
 
-pub async fn init() -> Result<Data, Error> {
+pub fn init() -> Result<Data, Error> {
     let (schema, index, reader) = crate::fimfarchive::open("index");
+    let runtime = Runtime::new()?;
+    let pool = runtime.block_on(SqlitePool::connect("ereader.sqlite"))?;
+    runtime.block_on(init_settings(&pool))?;
     Ok(Data {
-        pool: SqlitePool::connect("ereader.sqlite").await?,
-        runtime: Runtime::new()?,
+        pool,
+        runtime,
         schema,
         index,
         reader,
@@ -126,6 +128,7 @@ pub fn library(s: &mut Cursive) -> Result<(), Error> {
             .title("Library")
             .button("Bookmarks", try_view!(bookmarks, button))
             .button("Fimfarchive", fimfarchive)
+            .button("Settings", try_view!(settings, button))
             .max_width(90),
     );
 
@@ -393,4 +396,80 @@ fn set_fimfarchive_details(s: &mut Cursive, book: &FimfArchiveResult) {
 
     fimfarchive.remove_child(1);
     fimfarchive.add_child(Panel::new(detail_view.scrollable()).title("Details"));
+}
+
+// ============================== FIMFARCHIVE ==============================
+fn settings(s: &mut Cursive) -> Result<(), Error> {
+    let data = data(s)?;
+    let epub_path = data.run(get_string_setting(&data.pool, "epub path".into()))?;
+    let fimfarchive_path = data.run(get_string_setting(&data.pool, "fimfarchive path".into()))?;
+
+    let mut settings_view = ListView::new();
+
+    settings_view.add_child(
+        "epub path",
+        EditView::new()
+            .content(epub_path.unwrap_or_default())
+            .with_name("epub path")
+            .full_width(),
+    );
+
+    settings_view.add_child(
+        "fimfarchive path",
+        EditView::new()
+            .content(fimfarchive_path.unwrap_or_default())
+            .with_name("fimfarchive path")
+            .full_width(),
+    );
+
+    s.add_layer(
+        Dialog::around(settings_view)
+            .title("Settings")
+            .button("Save", try_view!(save_settings, button))
+            .button("Scan Epub", |s| {
+                error_message(s, Error::DebugMsg("unimplemented".into()));
+            })
+            .button("Scan Fimfarchive", |s| {
+                error_message(s, Error::DebugMsg("unimplemented".into()));
+            })
+            .dismiss_button("Close")
+            .max_width(90),
+    );
+
+    Ok(())
+}
+
+fn save_settings(s: &mut Cursive) -> Result<(), Error> {
+    let fimfarchive_path = s
+        .find_name::<EditView>("fimfarchive path")
+        .unwrap()
+        .get_content();
+    let epub_path = s.find_name::<EditView>("epub path").unwrap().get_content();
+
+    let fimfarchive_path = if fimfarchive_path.is_empty() {
+        None
+    } else {
+        Some(fimfarchive_path.to_string())
+    };
+
+    let epub_path = if epub_path.is_empty() {
+        None
+    } else {
+        Some(epub_path.to_string())
+    };
+
+    let data = data(s)?;
+    data.run(set_string_setting(
+        &data.pool,
+        "fimfarchive path".into(),
+        fimfarchive_path,
+    ))?;
+
+    data.run(set_string_setting(
+        &data.pool,
+        "epub path".into(),
+        epub_path,
+    ))?;
+
+    Ok(())
 }

@@ -161,29 +161,68 @@ pub async fn delete_bookmark(pool: &SqlitePool, id: i64) -> Result<(), Error> {
 }
 
 // ============================== SETTINGS ==============================
-pub async fn set_int_setting(pool: &SqlitePool, key: String, value: Option<i64>) -> Result<(), Error> {
-    query!("insert into settings(key, value) values (?, ?)", key, value)
+pub async fn init_settings(pool: &SqlitePool) -> Result<(), Error> {
+    query!(
+        "insert or ignore into settings(key, value) values ('epub path', null), ('fimfarchive path', null)"
+    )
         .execute(pool)
         .await?;
     Ok(())
 }
 
-pub async fn set_string_setting(pool: &SqlitePool, key: String, value: Option<String>) -> Result<(), Error> {
-    query!("insert into settings(key, value) values (?, ?)", key, value)
+pub async fn reinit_settings(pool: &SqlitePool) -> Result<(), Error> {
+    query!(
+        "insert or replace into settings(key, value) values ('epub path', null), ('fimfarchive path', null)"
+    )
         .execute(pool)
         .await?;
+    Ok(())
+}
+
+pub async fn set_int_setting(
+    pool: &SqlitePool,
+    key: String,
+    value: Option<i64>,
+) -> Result<(), Error> {
+    query!(
+        "insert or replace into settings(key, value) values (?, ?)",
+        key,
+        value
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn set_string_setting(
+    pool: &SqlitePool,
+    key: String,
+    value: Option<String>,
+) -> Result<(), Error> {
+    query!(
+        "insert or replace into settings(key, value) values (?, ?)",
+        key,
+        value
+    )
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
 pub async fn get_int_setting(pool: &SqlitePool, key: String) -> Result<Option<i64>, Error> {
-    Ok(sqlx::query_scalar!(r#"select value as "value: i64" from settings where key = ?"#, key)
-        .fetch_one(pool)
-        .await?)
+    Ok(sqlx::query_scalar!(
+        r#"select value as "value: i64" from settings where key = ?"#,
+        key
+    )
+    .fetch_one(pool)
+    .await?)
 }
 
 pub async fn get_string_setting(pool: &SqlitePool, key: String) -> Result<Option<String>, Error> {
-    Ok(sqlx::query_scalar!(r#"select value as "value: String" from settings where key = ?"#, key)
-        .fetch_one(pool)
-        .await?)
+    Ok(sqlx::query_scalar!(
+        r#"select value as "value: String" from settings where key = ?"#,
+        key
+    )
+    .fetch_one(pool)
+    .await?)
 }
-
