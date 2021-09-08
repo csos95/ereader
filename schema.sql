@@ -1,5 +1,10 @@
 -- noinspection SqlNoDataSourceInspectionForFile
 
+create table settings (
+    key text not null primary key,
+    value any
+);
+
 create table books (
     id text not null primary key,
     identifier text not null,

@@ -83,9 +83,14 @@ Requirements:
 - [x] make cursive views to search fimfarchive and display results
     - [x] search page with text box and cancel button
     - [x] results page with details on selected result
+- [x] settings table (key text, value any) (does any exist already or is it new specifically for the sqlite strict mode?)
+- [x] methods to get/set settings of various types
+- [ ] settings page with epubs path, fimfarchive path, scan epubs button, and save button
 - [ ] check if the index directory exists, if not create it
-- [ ] import epub from fimfarchive results into library
-- [ ] settings page (fimfarchive path, epubs path, scan option for epubs/archives)
+- [ ] pull index.json from fimfarchive and process it for search index
+- [ ] add button on settings page to import index (deletes old if it exists)
+- [ ] make function to import a single epub
+- [ ] add button to import epub from fimfarchive results into library
 - [ ] benchmark the speed/storage size of different zstd levels.
 - [ ] test dictionary trainging for compression  
     Training on all books would probably take too long, but try it anyways.  
